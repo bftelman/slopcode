@@ -101,6 +101,17 @@ func (b *Buffer) InsertNewline() {
 	b.col = 0
 }
 
+// InsertTab inserts spaces to advance the cursor to the next tab stop.
+func (b *Buffer) InsertTab(width int) {
+	if width < 1 {
+		width = 1
+	}
+	n := width - (b.col % width)
+	for i := 0; i < n; i++ {
+		b.InsertRune(' ')
+	}
+}
+
 // Backspace deletes the character before the cursor, joining lines at column 0.
 func (b *Buffer) Backspace() {
 	if b.col > 0 {
