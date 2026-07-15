@@ -121,6 +121,29 @@ func contains(haystack, needle string) bool {
 	return false
 }
 
+// TestDrawClearsStaleTrailingText verifies that shrinking a line blanks the
+// leftover cells even though Draw no longer calls Screen.Clear().
+func TestDrawClearsStaleTrailingText(t *testing.T) {
+	s := newSimScreen(t, 80, 24)
+	defer s.Fini()
+
+	Draw(s, buffer.New([]string{"hello"}), "t.txt", "", false, 0, 0, true)
+	Draw(s, buffer.New([]string{"hi"}), "t.txt", "", false, 0, 0, true)
+
+	cells, width, _ := s.GetContents()
+	gw := GutterWidth(1)
+	// "hi" occupies gw..gw+1; the old "llo" tail at gw+2.. must be blank now.
+	for _, x := range []int{gw + 2, gw + 3, gw + 4} {
+		if r := cellAt(cells, width, x, 1).Runes; len(r) == 1 && r[0] != ' ' {
+			t.Fatalf("stale content at col %d: %q", x, r)
+		}
+	}
+	// Sanity: the new text is present.
+	if r := cellAt(cells, width, gw, 1).Runes; len(r) != 1 || r[0] != 'h' {
+		t.Fatalf("expected 'h' at col %d, got %q", gw, r)
+	}
+}
+
 func TestDrawSplashShowsBanner(t *testing.T) {
 	s := newSimScreen(t, 80, 24)
 	defer s.Fini()

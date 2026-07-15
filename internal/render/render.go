@@ -61,7 +61,8 @@ func drawText(s tcell.Screen, x, y int, text string, style tcell.Style) {
 // Draw renders the editor into columns [originX, width) and positions the cursor.
 // When showCursor is false (e.g. while browsing) the cursor is hidden.
 func Draw(s tcell.Screen, b *buffer.Buffer, filename, notice string, modified bool, scroll, originX int, showCursor bool) {
-	s.Clear()
+	// No s.Clear(): we repaint every cell in the editor region explicitly, so
+	// tcell's cell diff only flushes what actually changed (avoids flicker).
 	width, height := s.Size()
 	editorWidth := width - originX
 
@@ -97,11 +98,16 @@ func Draw(s tcell.Screen, b *buffer.Buffer, filename, notice string, modified bo
 	styled := highlight.Highlight(strings.Join(b.Lines(), "\n"), filename, StyleName)
 	textRows := height - 1
 	for i := 0; i < textRows; i++ {
+		y := i + 1
+		// Blank the whole editor region for this row first, so shrinking lines
+		// and rows past the end of the buffer don't leave stale content.
+		for x := originX; x < width; x++ {
+			s.SetContent(x, y, ' ', nil, tcell.StyleDefault)
+		}
 		lineIdx := scroll + i
 		if lineIdx >= len(styled) {
-			break
+			continue
 		}
-		y := i + 1
 		num := strconv.Itoa(lineIdx + 1)
 		drawText(s, originX+gw-2-len(num), y, num, numStyle)
 		s.SetContent(originX+gw-1, y, '│', nil, numStyle)
