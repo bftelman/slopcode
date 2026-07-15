@@ -16,12 +16,12 @@ type Editor struct {
 	path     string
 	scroll   int
 	modified bool
-	status   string // shown in place of the filename (e.g. save errors)
+	notice   string // transient message; cleared on the next key
 }
 
 // New builds an Editor for the given screen, buffer, and file path.
 func New(s tcell.Screen, b *buffer.Buffer, path string) *Editor {
-	return &Editor{s: s, b: b, path: path, status: path}
+	return &Editor{s: s, b: b, path: path}
 }
 
 // Run polls events and redraws until the user quits (Ctrl+Q).
@@ -43,15 +43,16 @@ func (e *Editor) Run() {
 
 // handleKey applies one key event. It returns true when the editor should quit.
 func (e *Editor) handleKey(ev *tcell.EventKey) bool {
+	e.notice = "" // any key clears the transient notice
 	switch ev.Key() {
 	case tcell.KeyCtrlQ:
 		return true
 	case tcell.KeyCtrlS:
 		if err := fileio.Save(e.path, e.b.Lines()); err != nil {
-			e.status = "SAVE ERROR: " + err.Error()
+			e.notice = "SAVE ERROR: " + err.Error()
 		} else {
 			e.modified = false
-			e.status = e.path
+			e.notice = e.path + " saved"
 		}
 	case tcell.KeyEnter:
 		e.b.InsertNewline()
@@ -72,7 +73,7 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 	case tcell.KeyEnd:
 		e.b.MoveEnd()
 	case tcell.KeyTab:
-		e.b.InsertRune('\t')
+		e.b.InsertTab(render.TabWidth)
 		e.modified = true
 	case tcell.KeyRune:
 		e.b.InsertRune(ev.Rune())
@@ -94,5 +95,5 @@ func (e *Editor) draw() {
 	} else if row >= e.scroll+textRows {
 		e.scroll = row - textRows + 1
 	}
-	render.Draw(e.s, e.b, e.status, e.modified, e.scroll)
+	render.Draw(e.s, e.b, e.path, e.notice, e.modified, e.scroll)
 }
