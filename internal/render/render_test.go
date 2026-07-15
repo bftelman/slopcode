@@ -153,6 +153,36 @@ func TestDrawSplashShowsBanner(t *testing.T) {
 	}
 }
 
+func TestSplashHandleIsHyperlink(t *testing.T) {
+	s := newSimScreen(t, 80, 24)
+	defer s.Fini()
+	DrawSplash(s, "[No Name]", "")
+
+	linkStyle := tcell.StyleDefault.Foreground(tcell.ColorAqua).Underline(true).Url(githubURL)
+	cells, width, height := s.GetContents()
+	foundAt := false
+	for y := 0; y < height && !foundAt; y++ {
+		for x := 0; x < width; x++ {
+			c := cellAt(cells, width, x, y)
+			if len(c.Runes) == 1 && c.Runes[0] == '@' {
+				if c.Style != linkStyle {
+					t.Fatalf("@ cell should carry the github link style")
+				}
+				// The 'b' in "by " just before should NOT be a link.
+				prev := cellAt(cells, width, x-3, y)
+				if prev.Style == linkStyle {
+					t.Fatal("prefix 'by ' should not be a link")
+				}
+				foundAt = true
+				break
+			}
+		}
+	}
+	if !foundAt {
+		t.Fatal("expected @bftelman handle in splash")
+	}
+}
+
 func TestDrawTextMultibyteColumns(t *testing.T) {
 	s := newSimScreen(t, 20, 3)
 	defer s.Fini()
