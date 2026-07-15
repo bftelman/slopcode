@@ -4,10 +4,12 @@ package render
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 
 	"github.com/bftelman/slopcode/internal/buffer"
+	"github.com/bftelman/slopcode/internal/highlight"
 )
 
 // TabWidth is the number of columns a tab stop spans.
@@ -49,7 +51,7 @@ func drawText(s tcell.Screen, x, y int, text string, style tcell.Style) {
 }
 
 // Draw renders the full editor frame and positions the cursor.
-func Draw(s tcell.Screen, b *buffer.Buffer, filename string, modified bool, scroll int) {
+func Draw(s tcell.Screen, b *buffer.Buffer, filename, notice string, modified bool, scroll int) {
 	s.Clear()
 	width, height := s.Size()
 
@@ -60,36 +62,65 @@ func Draw(s tcell.Screen, b *buffer.Buffer, filename string, modified bool, scro
 	}
 	left := fmt.Sprintf(" %s — %d lines", filename, b.LineCount())
 	drawText(s, 0, 0, clip(left, width), bar)
+
 	row, col := b.Cursor()
 	right := fmt.Sprintf("Ln %d, Col %d", row+1, col+1)
 	if modified {
 		right += "  [modified]"
 	}
 	right += " "
-	if len(right) < width {
-		drawText(s, width-len(right), 0, right, bar)
+	rightStart := width - len(right)
+	if rightStart > 0 {
+		drawText(s, rightStart, 0, right, bar)
+	}
+	if notice != "" {
+		noticeStyle := bar.Foreground(tcell.ColorGreen)
+		nx := rightStart - len(notice) - 2
+		if nx > len(left) {
+			drawText(s, nx, 0, notice, noticeStyle)
+		}
 	}
 
-	// Text area.
+	// Text area with syntax highlighting and tab expansion.
 	gw := GutterWidth(b.LineCount())
 	numStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
-	lines := b.Lines()
+	styled := highlight.Highlight(strings.Join(b.Lines(), "\n"), filename, StyleName)
 	textRows := height - 1
 	for i := 0; i < textRows; i++ {
 		lineIdx := scroll + i
-		if lineIdx >= len(lines) {
+		if lineIdx >= len(styled) {
 			break
 		}
 		y := i + 1
 		num := strconv.Itoa(lineIdx + 1)
 		drawText(s, gw-2-len(num), y, num, numStyle)
 		s.SetContent(gw-1, y, '│', nil, numStyle)
-		drawText(s, gw, y, clip(lines[lineIdx], width-gw), tcell.StyleDefault)
+
+		x := 0
+		for _, sr := range styled[lineIdx] {
+			if gw+x >= width {
+				break
+			}
+			if sr.R == '\t' {
+				stop := TabWidth - (x % TabWidth)
+				for k := 0; k < stop && gw+x < width; k++ {
+					s.SetContent(gw+x, y, ' ', nil, tcell.StyleDefault)
+					x++
+				}
+				continue
+			}
+			s.SetContent(gw+x, y, sr.R, nil, sr.Style)
+			x++
+		}
 	}
 
-	// Cursor position on screen.
+	// Cursor position on screen (tab-aware).
+	lines := b.Lines()
 	cy := row - scroll + 1
-	cx := gw + col
+	cx := gw
+	if row >= 0 && row < len(lines) {
+		cx = gw + screenCol(lines[row], col, TabWidth)
+	}
 	if cy >= 1 && cy < height {
 		s.ShowCursor(cx, cy)
 	} else {
