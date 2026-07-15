@@ -13,16 +13,23 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: slopcode <filename>")
+	if len(os.Args) > 2 {
+		fmt.Fprintln(os.Stderr, "usage: slopcode [filename]")
 		os.Exit(2)
 	}
-	path := os.Args[1]
+	path := ""
+	if len(os.Args) == 2 {
+		path = os.Args[1]
+	}
 
-	lines, err := fileio.Load(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cannot open %s: %v\n", path, err)
-		os.Exit(1)
+	var lines []string
+	if path != "" {
+		var err error
+		lines, err = fileio.Load(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cannot open %s: %v\n", path, err)
+			os.Exit(1)
+		}
 	}
 
 	s, err := tcell.NewScreen()
