@@ -1,11 +1,14 @@
 package render
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
 
 	"github.com/bftelman/slopcode/internal/buffer"
+	"github.com/bftelman/slopcode/internal/filebrowser"
 )
 
 func TestScreenColNoTabs(t *testing.T) {
@@ -48,7 +51,7 @@ func TestDrawHighlightsKeyword(t *testing.T) {
 	defer s.Fini()
 	b := buffer.New([]string{"func main() {}"})
 
-	Draw(s, b, "t.go", "", false, 0)
+	Draw(s, b, "t.go", "", false, 0, 0, true)
 
 	cells, width, _ := s.GetContents()
 	gw := GutterWidth(b.LineCount())
@@ -71,7 +74,7 @@ func TestDrawExpandsTab(t *testing.T) {
 	defer s.Fini()
 	b := buffer.New([]string{"\tx"})
 
-	Draw(s, b, "t.txt", "", false, 0)
+	Draw(s, b, "t.txt", "", false, 0, 0, true)
 
 	cells, width, _ := s.GetContents()
 	gw := GutterWidth(b.LineCount())
@@ -92,7 +95,7 @@ func TestDrawShowsNotice(t *testing.T) {
 	defer s.Fini()
 	b := buffer.New([]string{"hi"})
 
-	Draw(s, b, "t.txt", "t.txt saved", false, 0)
+	Draw(s, b, "t.txt", "t.txt saved", false, 0, 0, true)
 
 	cells, width, _ := s.GetContents()
 	var row0 []rune
@@ -116,4 +119,39 @@ func contains(haystack, needle string) bool {
 		}
 	}
 	return false
+}
+
+// TestDrawSidebarShowsEntries verifies the browser panel lists directory entries.
+func TestDrawSidebarShowsEntries(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	br, err := filebrowser.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newSimScreen(t, 80, 24)
+	defer s.Fini()
+	DrawSidebar(s, br)
+
+	cells, width, height := s.GetContents()
+	found := false
+	for y := 0; y < height; y++ {
+		var row []rune
+		for x := 0; x < SidebarWidth-1; x++ {
+			r := cellAt(cells, width, x, y).Runes
+			if len(r) == 1 {
+				row = append(row, r[0])
+			} else {
+				row = append(row, ' ')
+			}
+		}
+		if contains(string(row), "hello.txt") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("sidebar should list hello.txt")
+	}
 }
