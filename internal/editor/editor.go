@@ -19,15 +19,38 @@ type Editor struct {
 	b           *buffer.Buffer
 	path        string
 	scroll      int
-	modified    bool
-	notice      string // transient message; cleared on the next key
+	baseline    []string // content as last loaded/saved; "modified" is derived from this
+	notice      string   // transient message; cleared on the next key
 	browser     *filebrowser.Browser // non-nil while browsing
 	pendingOpen string               // unsaved-changes guard latch
 }
 
 // New builds an Editor for the given screen, buffer, and file path.
 func New(s tcell.Screen, b *buffer.Buffer, path string) *Editor {
-	return &Editor{s: s, b: b, path: path}
+	return &Editor{s: s, b: b, path: path, baseline: cloneLines(b.Lines())}
+}
+
+// isModified reports whether the buffer differs from the last loaded/saved state.
+func (e *Editor) isModified() bool {
+	return !linesEqual(e.baseline, e.b.Lines())
+}
+
+func cloneLines(src []string) []string {
+	cp := make([]string, len(src))
+	copy(cp, src)
+	return cp
+}
+
+func linesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Run polls events and redraws until the user quits (Ctrl+Q).
@@ -61,21 +84,15 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 	case tcell.KeyCtrlS:
 		e.save()
 	case tcell.KeyCtrlZ:
-		if e.b.Undo() {
-			e.modified = true
-		}
+		e.b.Undo()
 	case tcell.KeyCtrlY:
-		if e.b.Redo() {
-			e.modified = true
-		}
+		e.b.Redo()
 	case tcell.KeyEnter:
 		e.b.Checkpoint()
 		e.b.InsertNewline()
-		e.modified = true
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		e.b.Checkpoint()
 		autopair.Backspace(e.b)
-		e.modified = true
 	case tcell.KeyLeft:
 		e.b.MoveLeft()
 	case tcell.KeyRight:
@@ -91,18 +108,16 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 	case tcell.KeyTab:
 		e.b.Checkpoint()
 		e.b.InsertTab(render.TabWidth)
-		e.modified = true
 	case tcell.KeyRune:
 		e.b.Checkpoint()
 		autopair.InsertRune(e.b, ev.Rune())
-		e.modified = true
 	}
 	return false
 }
 
 // tryQuit returns true only when it is safe to quit (no unsaved changes).
 func (e *Editor) tryQuit() bool {
-	if e.modified {
+	if e.isModified() {
 		e.notice = "unsaved changes — Ctrl+S to save before quitting"
 		return false
 	}
@@ -125,7 +140,7 @@ func (e *Editor) save() {
 		e.notice = "SAVE ERROR: " + err.Error()
 		return
 	}
-	e.modified = false
+	e.baseline = cloneLines(e.b.Lines())
 	e.notice = e.path + " saved"
 }
 
@@ -175,7 +190,7 @@ func (e *Editor) browseEnter() {
 		e.pendingOpen = ""
 		return
 	}
-	if e.modified && e.pendingOpen != path {
+	if e.isModified() && e.pendingOpen != path {
 		e.pendingOpen = path
 		e.notice = "unsaved changes — Ctrl+S, or Enter again to discard"
 		return
@@ -188,7 +203,7 @@ func (e *Editor) browseEnter() {
 	e.b = buffer.New(lines)
 	e.path = path
 	e.scroll = 0
-	e.modified = false
+	e.baseline = cloneLines(e.b.Lines())
 	e.browser = nil
 	e.pendingOpen = ""
 	e.notice = path + " opened"
@@ -196,7 +211,7 @@ func (e *Editor) browseEnter() {
 
 // draw adjusts the scroll offset to keep the cursor visible, then renders.
 func (e *Editor) draw() {
-	if e.browser == nil && e.path == "" && !e.modified {
+	if e.browser == nil && e.path == "" && !e.isModified() {
 		render.DrawSplash(e.s, e.displayName(), e.notice)
 		return
 	}
@@ -211,10 +226,11 @@ func (e *Editor) draw() {
 	} else if row >= e.scroll+textRows {
 		e.scroll = row - textRows + 1
 	}
+	modified := e.isModified()
 	if e.browser != nil {
-		render.Draw(e.s, e.b, e.displayName(), e.notice, e.modified, e.scroll, render.SidebarWidth, false)
+		render.Draw(e.s, e.b, e.displayName(), e.notice, modified, e.scroll, render.SidebarWidth, false)
 		render.DrawSidebar(e.s, e.browser)
 	} else {
-		render.Draw(e.s, e.b, e.displayName(), e.notice, e.modified, e.scroll, 0, true)
+		render.Draw(e.s, e.b, e.displayName(), e.notice, modified, e.scroll, 0, true)
 	}
 }

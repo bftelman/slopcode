@@ -46,13 +46,13 @@ func TestRunTypesEditsAndSaves(t *testing.T) {
 		t.Fatalf("saved content = %q, want %q", string(got), "hi\nthere\n")
 	}
 
-	// Buffer should also reflect the edits and clear the modified flag on save.
+	// Buffer should also reflect the edits and be unmodified after save.
 	lines, _ := fileio.Load(path)
 	if len(lines) != 2 || lines[0] != "hi" || lines[1] != "there" {
 		t.Fatalf("reloaded lines = %#v", lines)
 	}
-	if e.modified {
-		t.Fatalf("expected modified=false after save")
+	if e.isModified() {
+		t.Fatalf("expected unmodified after save")
 	}
 }
 
@@ -208,6 +208,53 @@ func TestSplashShownUntilFirstKey(t *testing.T) {
 	}
 	if e.b.Lines()[0] != "h" {
 		t.Fatalf("buffer should hold typed text, got %q", e.b.Lines()[0])
+	}
+}
+
+func TestEmptyingUnnamedBufferBackToOriginalIsUnmodified(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	e := New(s, buffer.New(nil), "") // pristine empty, unnamed
+	if e.isModified() {
+		t.Fatal("fresh buffer should be unmodified")
+	}
+	e.handleKey(keyEvent(tcell.KeyRune, 'a'))
+	e.handleKey(keyEvent(tcell.KeyRune, 'b'))
+	if !e.isModified() {
+		t.Fatal("after typing should be modified")
+	}
+	e.handleKey(keyEvent(tcell.KeyBackspace2))
+	e.handleKey(keyEvent(tcell.KeyBackspace2))
+	if e.isModified() {
+		t.Fatalf("emptied back to original should be UNmodified, got lines %#v", e.b.Lines())
+	}
+}
+
+func TestRevertingLoadedFileToOriginalIsUnmodified(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	e := New(s, buffer.New([]string{"hi"}), filepath.Join(t.TempDir(), "x.txt"))
+	if e.isModified() {
+		t.Fatal("freshly loaded file should be unmodified")
+	}
+	e.handleKey(keyEvent(tcell.KeyEnd))
+	e.handleKey(keyEvent(tcell.KeyRune, 'x')) // "hix"
+	if !e.isModified() {
+		t.Fatal("after edit should be modified")
+	}
+	e.handleKey(keyEvent(tcell.KeyBackspace2)) // back to "hi"
+	if e.isModified() {
+		t.Fatalf("reverted to original should be UNmodified, got %#v", e.b.Lines())
 	}
 }
 
