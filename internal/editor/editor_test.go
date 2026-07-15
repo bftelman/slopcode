@@ -55,6 +55,54 @@ func TestRunTypesEditsAndSaves(t *testing.T) {
 	}
 }
 
+func TestRunTabInsertsSpaces(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	b := buffer.New(nil)
+	e := New(s, b, filepath.Join(t.TempDir(), "x.txt"))
+	s.InjectKey(tcell.KeyTab, 0, tcell.ModNone)
+	s.InjectKey(tcell.KeyRune, 'x', tcell.ModNone)
+	s.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
+	e.Run()
+
+	if got := b.Lines()[0]; got != "    x" {
+		t.Fatalf("want 4 spaces then x, got %q", got)
+	}
+}
+
+func TestRunNoticeSetOnSaveClearedOnNextKey(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	path := filepath.Join(t.TempDir(), "n.txt")
+	b := buffer.New([]string{"hi"})
+	e := New(s, b, path)
+
+	if e.handleKey(keyEvent(tcell.KeyCtrlS)) {
+		t.Fatal("Ctrl+S should not quit")
+	}
+	if e.notice == "" {
+		t.Fatal("expected notice after save")
+	}
+	e.handleKey(keyEvent(tcell.KeyRight))
+	if e.notice != "" {
+		t.Fatalf("notice should clear on next key, got %q", e.notice)
+	}
+}
+
+func keyEvent(k tcell.Key) *tcell.EventKey {
+	return tcell.NewEventKey(k, 0, tcell.ModNone)
+}
+
 // TestRunBackspaceJoinsLines verifies Backspace at column 0 joins lines.
 func TestRunBackspaceJoinsLines(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
