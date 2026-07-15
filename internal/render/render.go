@@ -197,7 +197,11 @@ var splashArt = []string{
 	"█████ █████ █████ █     █████ █████ ████  █████",
 }
 
-const splashSubtitle = "by @bftelman"
+const (
+	splashPrefix = "by "
+	splashHandle = "@bftelman"
+	githubURL    = "https://github.com/bftelman"
+)
 
 // DrawSplash renders the no-file welcome screen: statusbar + centered banner.
 func DrawSplash(s tcell.Screen, filename, notice string) {
@@ -230,11 +234,16 @@ func DrawSplash(s tcell.Screen, filename, notice string) {
 		}
 		drawText(s, x, top+i, line, artStyle)
 	}
-	sx := (width - utf8.RuneCountInString(splashSubtitle)) / 2
+	// Subtitle: "by " in plain text, "@bftelman" as a clickable link (OSC 8).
+	subtitleLen := utf8.RuneCountInString(splashPrefix) + utf8.RuneCountInString(splashHandle)
+	sx := (width - subtitleLen) / 2
 	if sx < 0 {
 		sx = 0
 	}
-	drawText(s, sx, top+len(splashArt)+1, splashSubtitle, tcell.StyleDefault)
+	sy := top + len(splashArt) + 1
+	linkStyle := tcell.StyleDefault.Foreground(tcell.ColorAqua).Underline(true).Url(githubURL)
+	drawText(s, sx, sy, splashPrefix, tcell.StyleDefault)
+	drawText(s, sx+utf8.RuneCountInString(splashPrefix), sy, splashHandle, linkStyle)
 
 	s.HideCursor()
 	s.Show()
