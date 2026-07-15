@@ -99,8 +99,93 @@ func TestRunNoticeSetOnSaveClearedOnNextKey(t *testing.T) {
 	}
 }
 
-func keyEvent(k tcell.Key) *tcell.EventKey {
-	return tcell.NewEventKey(k, 0, tcell.ModNone)
+func keyEvent(k tcell.Key, ch ...rune) *tcell.EventKey {
+	r := rune(0)
+	if len(ch) > 0 {
+		r = ch[0]
+	}
+	return tcell.NewEventKey(k, r, tcell.ModNone)
+}
+
+func TestBrowserOpensFileOnEnter(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "other.txt")
+	if err := os.WriteFile(target, []byte("loaded\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	start := filepath.Join(dir, "start.txt")
+	if err := os.WriteFile(start, []byte("start\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	lines, _ := fileio.Load(start)
+	e := New(s, buffer.New(lines), start)
+
+	e.handleKey(keyEvent(tcell.KeyCtrlB)) // open browser
+	if e.browser == nil {
+		t.Fatal("browser should be open")
+	}
+	for e.browser.Selected().Name != "other.txt" {
+		e.handleKey(keyEvent(tcell.KeyDown))
+	}
+	e.handleKey(keyEvent(tcell.KeyEnter))
+	if e.browser != nil {
+		t.Fatal("browser should close after opening a file")
+	}
+	if e.path != target {
+		t.Fatalf("path = %q, want %q", e.path, target)
+	}
+	if e.b.Lines()[0] != "loaded" {
+		t.Fatalf("buffer not loaded: %#v", e.b.Lines())
+	}
+}
+
+func TestBrowserUnsavedGuard(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "other.txt")
+	if err := os.WriteFile(target, []byte("loaded\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	start := filepath.Join(dir, "start.txt")
+	if err := os.WriteFile(start, []byte("start\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	lines, _ := fileio.Load(start)
+	e := New(s, buffer.New(lines), start)
+	e.handleKey(keyEvent(tcell.KeyRune, 'z')) // modify
+	e.handleKey(keyEvent(tcell.KeyCtrlB))     // open browser
+	for e.browser.Selected().Name != "other.txt" {
+		e.handleKey(keyEvent(tcell.KeyDown))
+	}
+	e.handleKey(keyEvent(tcell.KeyEnter)) // first Enter: guard
+	if e.browser == nil {
+		t.Fatal("should NOT switch on first Enter with unsaved changes")
+	}
+	if e.notice == "" {
+		t.Fatal("expected unsaved-changes notice")
+	}
+	e.handleKey(keyEvent(tcell.KeyEnter)) // second Enter: switch
+	if e.browser != nil {
+		t.Fatal("should switch on second Enter")
+	}
+	if e.path != target {
+		t.Fatalf("path = %q, want %q", e.path, target)
+	}
 }
 
 // TestRunBackspaceJoinsLines verifies Backspace at column 0 joins lines.
