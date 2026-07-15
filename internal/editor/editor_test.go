@@ -68,6 +68,7 @@ func TestRunTabInsertsSpaces(t *testing.T) {
 	e := New(s, b, filepath.Join(t.TempDir(), "x.txt"))
 	s.InjectKey(tcell.KeyTab, 0, tcell.ModNone)
 	s.InjectKey(tcell.KeyRune, 'x', tcell.ModNone)
+	s.InjectKey(tcell.KeyCtrlS, 0, tcell.ModNone) // clear modified so quit is allowed
 	s.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
 	e.Run()
 
@@ -172,6 +173,72 @@ func keyEvent(k tcell.Key, ch ...rune) *tcell.EventKey {
 	return tcell.NewEventKey(k, r, tcell.ModNone)
 }
 
+func TestUndoRedoKeys(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	e := New(s, buffer.New([]string{""}), filepath.Join(t.TempDir(), "x.txt"))
+	e.handleKey(keyEvent(tcell.KeyRune, 'a'))
+	e.handleKey(keyEvent(tcell.KeyRune, 'b'))
+	if e.b.Lines()[0] != "ab" {
+		t.Fatalf("setup: %q", e.b.Lines()[0])
+	}
+	e.handleKey(keyEvent(tcell.KeyCtrlZ))
+	if e.b.Lines()[0] != "a" {
+		t.Fatalf("after undo want a, got %q", e.b.Lines()[0])
+	}
+	e.handleKey(keyEvent(tcell.KeyCtrlY))
+	if e.b.Lines()[0] != "ab" {
+		t.Fatalf("after redo want ab, got %q", e.b.Lines()[0])
+	}
+}
+
+func TestQuitGuardBlocksWhenModified(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	e := New(s, buffer.New([]string{""}), filepath.Join(t.TempDir(), "x.txt"))
+	e.handleKey(keyEvent(tcell.KeyRune, 'z')) // modify
+	if e.handleKey(keyEvent(tcell.KeyCtrlQ)) {
+		t.Fatal("should NOT quit while modified")
+	}
+	if e.notice == "" {
+		t.Fatal("expected unsaved-changes notice")
+	}
+	e.handleKey(keyEvent(tcell.KeyCtrlS)) // save clears modified
+	if !e.handleKey(keyEvent(tcell.KeyCtrlQ)) {
+		t.Fatal("should quit after saving")
+	}
+}
+
+func TestUnnamedSaveWritesUntitled(t *testing.T) {
+	t.Chdir(t.TempDir())
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	e := New(s, buffer.New(nil), "") // no filename
+	e.handleKey(keyEvent(tcell.KeyRune, 'h'))
+	e.handleKey(keyEvent(tcell.KeyCtrlS))
+	if e.path != "untitled.txt" {
+		t.Fatalf("path = %q, want untitled.txt", e.path)
+	}
+	if _, err := os.Stat("untitled.txt"); err != nil {
+		t.Fatalf("untitled.txt not written: %v", err)
+	}
+}
+
 func TestBrowserOpensFileOnEnter(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "other.txt")
@@ -268,6 +335,7 @@ func TestRunBackspaceJoinsLines(t *testing.T) {
 	// Move down to row 1 col 0, then backspace to join.
 	s.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
 	s.InjectKey(tcell.KeyBackspace2, 0, tcell.ModNone)
+	s.InjectKey(tcell.KeyCtrlS, 0, tcell.ModNone) // clear modified so quit is allowed
 	s.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
 
 	e.Run()

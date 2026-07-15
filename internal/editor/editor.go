@@ -55,15 +55,25 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 	e.notice = "" // any key clears the transient notice
 	switch ev.Key() {
 	case tcell.KeyCtrlQ:
-		return true
+		return e.tryQuit()
 	case tcell.KeyCtrlB:
 		e.openBrowser()
 	case tcell.KeyCtrlS:
 		e.save()
+	case tcell.KeyCtrlZ:
+		if e.b.Undo() {
+			e.modified = true
+		}
+	case tcell.KeyCtrlY:
+		if e.b.Redo() {
+			e.modified = true
+		}
 	case tcell.KeyEnter:
+		e.b.Checkpoint()
 		e.b.InsertNewline()
 		e.modified = true
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		e.b.Checkpoint()
 		autopair.Backspace(e.b)
 		e.modified = true
 	case tcell.KeyLeft:
@@ -79,16 +89,38 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 	case tcell.KeyEnd:
 		e.b.MoveEnd()
 	case tcell.KeyTab:
+		e.b.Checkpoint()
 		e.b.InsertTab(render.TabWidth)
 		e.modified = true
 	case tcell.KeyRune:
+		e.b.Checkpoint()
 		autopair.InsertRune(e.b, ev.Rune())
 		e.modified = true
 	}
 	return false
 }
 
+// tryQuit returns true only when it is safe to quit (no unsaved changes).
+func (e *Editor) tryQuit() bool {
+	if e.modified {
+		e.notice = "unsaved changes — Ctrl+S to save before quitting"
+		return false
+	}
+	return true
+}
+
+// displayName is the filename shown in the statusbar.
+func (e *Editor) displayName() string {
+	if e.path == "" {
+		return "[No Name]"
+	}
+	return e.path
+}
+
 func (e *Editor) save() {
+	if e.path == "" {
+		e.path = "untitled.txt"
+	}
 	if err := fileio.Save(e.path, e.b.Lines()); err != nil {
 		e.notice = "SAVE ERROR: " + err.Error()
 		return
@@ -115,7 +147,7 @@ func (e *Editor) openBrowser() {
 func (e *Editor) handleBrowseKey(ev *tcell.EventKey) bool {
 	switch ev.Key() {
 	case tcell.KeyCtrlQ:
-		return true
+		return e.tryQuit()
 	case tcell.KeyCtrlB, tcell.KeyEscape:
 		e.browser = nil
 		e.pendingOpen = ""
@@ -164,6 +196,10 @@ func (e *Editor) browseEnter() {
 
 // draw adjusts the scroll offset to keep the cursor visible, then renders.
 func (e *Editor) draw() {
+	if e.browser == nil && e.path == "" && !e.modified {
+		render.DrawSplash(e.s, e.displayName(), e.notice)
+		return
+	}
 	_, height := e.s.Size()
 	textRows := height - 1
 	if textRows < 1 {
@@ -176,9 +212,9 @@ func (e *Editor) draw() {
 		e.scroll = row - textRows + 1
 	}
 	if e.browser != nil {
-		render.Draw(e.s, e.b, e.path, e.notice, e.modified, e.scroll, render.SidebarWidth, false)
+		render.Draw(e.s, e.b, e.displayName(), e.notice, e.modified, e.scroll, render.SidebarWidth, false)
 		render.DrawSidebar(e.s, e.browser)
 	} else {
-		render.Draw(e.s, e.b, e.path, e.notice, e.modified, e.scroll, 0, true)
+		render.Draw(e.s, e.b, e.displayName(), e.notice, e.modified, e.scroll, 0, true)
 	}
 }
