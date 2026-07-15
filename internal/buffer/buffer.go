@@ -101,6 +101,16 @@ func (b *Buffer) InsertNewline() {
 	b.col = 0
 }
 
+// RuneAt returns the rune at col+offset in the current line, or false if out of range.
+func (b *Buffer) RuneAt(offset int) (rune, bool) {
+	line := b.lines[b.row]
+	i := b.col + offset
+	if i < 0 || i >= len(line) {
+		return 0, false
+	}
+	return rune(line[i]), true
+}
+
 // InsertTab inserts spaces to advance the cursor to the next tab stop.
 func (b *Buffer) InsertTab(width int) {
 	if width < 1 {

@@ -166,3 +166,21 @@ func TestInsertTabOnStopInsertsFullWidth(t *testing.T) {
 		t.Fatalf("want full tab, got %q", b.Lines()[0])
 	}
 }
+
+func TestRuneAt(t *testing.T) {
+	b := New([]string{"abc"})
+	b.MoveRight() // col 1
+	if r, ok := b.RuneAt(0); !ok || r != 'b' {
+		t.Fatalf("at cursor want b got %q ok=%v", r, ok)
+	}
+	if r, ok := b.RuneAt(-1); !ok || r != 'a' {
+		t.Fatalf("before cursor want a got %q ok=%v", r, ok)
+	}
+	if _, ok := b.RuneAt(-2); ok {
+		t.Fatal("expected out-of-range before start")
+	}
+	b.MoveEnd() // col 3
+	if _, ok := b.RuneAt(0); ok {
+		t.Fatal("expected out-of-range at end")
+	}
+}
