@@ -121,6 +121,52 @@ func contains(haystack, needle string) bool {
 	return false
 }
 
+func TestDrawSplashShowsBanner(t *testing.T) {
+	s := newSimScreen(t, 80, 24)
+	defer s.Fini()
+	DrawSplash(s, "[No Name]", "")
+
+	cells, width, height := s.GetContents()
+	blocks, subtitle := false, false
+	for y := 0; y < height; y++ {
+		var row []rune
+		for x := 0; x < width; x++ {
+			r := cellAt(cells, width, x, y).Runes
+			if len(r) == 1 {
+				row = append(row, r[0])
+				if r[0] == '█' {
+					blocks = true
+				}
+			} else {
+				row = append(row, ' ')
+			}
+		}
+		if contains(string(row), "bftelman") {
+			subtitle = true
+		}
+	}
+	if !blocks {
+		t.Fatal("splash should render block banner")
+	}
+	if !subtitle {
+		t.Fatal("splash should show subtitle by @bftelman")
+	}
+}
+
+func TestDrawTextMultibyteColumns(t *testing.T) {
+	s := newSimScreen(t, 20, 3)
+	defer s.Fini()
+	drawText(s, 0, 0, "█x", tcell.StyleDefault)
+	s.Show()
+	cells, width, _ := s.GetContents()
+	if r := cellAt(cells, width, 0, 0).Runes; len(r) != 1 || r[0] != '█' {
+		t.Fatalf("cell 0 = %q, want block", r)
+	}
+	if r := cellAt(cells, width, 1, 0).Runes; len(r) != 1 || r[0] != 'x' {
+		t.Fatalf("cell 1 = %q, want x at column 1", r)
+	}
+}
+
 // TestDrawSidebarShowsEntries verifies the browser panel lists directory entries.
 func TestDrawSidebarShowsEntries(t *testing.T) {
 	dir := t.TempDir()
