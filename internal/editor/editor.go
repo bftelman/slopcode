@@ -23,6 +23,7 @@ type Editor struct {
 	notice      string   // transient message; cleared on the next key
 	browser     *filebrowser.Browser // non-nil while browsing
 	pendingOpen string               // unsaved-changes guard latch
+	splashShown bool                 // true when the last frame was the splash screen
 }
 
 // New builds an Editor for the given screen, buffer, and file path.
@@ -213,6 +214,7 @@ func (e *Editor) browseEnter() {
 func (e *Editor) draw() {
 	if e.browser == nil && e.path == "" && !e.isModified() {
 		render.DrawSplash(e.s, e.displayName(), e.notice)
+		e.splashShown = true
 		return
 	}
 	_, height := e.s.Size()
@@ -232,5 +234,12 @@ func (e *Editor) draw() {
 		render.DrawSidebar(e.s, e.browser)
 	} else {
 		render.Draw(e.s, e.b, e.displayName(), e.notice, modified, e.scroll, 0, true)
+	}
+	// Leaving the splash: the OSC 8 link left an open hyperlink region. Force a
+	// full repaint so tcell re-emits every cell, closing the link and clearing
+	// any ghost underlines the terminal painted while it was open.
+	if e.splashShown {
+		e.splashShown = false
+		e.s.Sync()
 	}
 }
