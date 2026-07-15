@@ -173,6 +173,44 @@ func keyEvent(k tcell.Key, ch ...rune) *tcell.EventKey {
 	return tcell.NewEventKey(k, r, tcell.ModNone)
 }
 
+func TestSplashShownUntilFirstKey(t *testing.T) {
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	e := New(s, buffer.New(nil), "") // no filename
+
+	hasBlocks := func() bool {
+		cells, width, height := s.GetContents()
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				r := cells[y*width+x].Runes
+				if len(r) == 1 && r[0] == '█' {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	e.draw()
+	if !hasBlocks() {
+		t.Fatal("splash banner should show before any typing")
+	}
+
+	e.handleKey(keyEvent(tcell.KeyRune, 'h')) // fills buffer, sets modified
+	e.draw()
+	if hasBlocks() {
+		t.Fatal("splash should disappear once typing begins")
+	}
+	if e.b.Lines()[0] != "h" {
+		t.Fatalf("buffer should hold typed text, got %q", e.b.Lines()[0])
+	}
+}
+
 func TestUndoRedoKeys(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
 	if err := s.Init(); err != nil {
