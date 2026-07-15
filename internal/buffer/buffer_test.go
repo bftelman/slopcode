@@ -167,6 +167,50 @@ func TestInsertTabOnStopInsertsFullWidth(t *testing.T) {
 	}
 }
 
+func TestUndoRedo(t *testing.T) {
+	b := New([]string{"ab"})
+	b.MoveEnd()
+	b.Checkpoint()
+	b.InsertRune('c') // "abc"
+	if b.Lines()[0] != "abc" {
+		t.Fatalf("setup: %q", b.Lines()[0])
+	}
+	if !b.Undo() {
+		t.Fatal("undo should succeed")
+	}
+	if b.Lines()[0] != "ab" {
+		t.Fatalf("after undo want ab, got %q", b.Lines()[0])
+	}
+	if _, c := b.Cursor(); c != 2 {
+		t.Fatalf("cursor should restore to 2, got %d", c)
+	}
+	if !b.Redo() {
+		t.Fatal("redo should succeed")
+	}
+	if b.Lines()[0] != "abc" {
+		t.Fatalf("after redo want abc, got %q", b.Lines()[0])
+	}
+}
+
+func TestUndoEmptyReturnsFalse(t *testing.T) {
+	b := New([]string{"x"})
+	if b.Undo() {
+		t.Fatal("undo on empty stack should return false")
+	}
+}
+
+func TestCheckpointClearsRedo(t *testing.T) {
+	b := New([]string{""})
+	b.Checkpoint()
+	b.InsertRune('a')
+	b.Undo() // redo now has one entry
+	b.Checkpoint()
+	b.InsertRune('b')
+	if b.Redo() {
+		t.Fatal("redo should be cleared after a new checkpoint")
+	}
+}
+
 func TestRuneAt(t *testing.T) {
 	b := New([]string{"abc"})
 	b.MoveRight() // col 1
