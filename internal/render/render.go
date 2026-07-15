@@ -227,7 +227,7 @@ func DrawSplash(s tcell.Screen, filename, notice string) {
 		}
 	}
 
-	artStyle := tcell.StyleDefault.Foreground(tcell.ColorAqua)
+	artStyle := tcell.StyleDefault.Foreground(tcell.ColorGold)
 	block := len(splashArt) + 2 // banner + blank line + subtitle
 	top := 1 + (height-1-block)/2
 	if top < 1 {
