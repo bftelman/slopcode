@@ -6,6 +6,64 @@ type Buffer struct {
 	lines []string
 	row   int
 	col   int
+	undo  []state
+	redo  []state
+}
+
+const maxUndo = 500
+
+type state struct {
+	lines []string
+	row   int
+	col   int
+}
+
+func (b *Buffer) snapshot() state {
+	cp := make([]string, len(b.lines))
+	copy(cp, b.lines)
+	return state{lines: cp, row: b.row, col: b.col}
+}
+
+func (b *Buffer) restore(s state) {
+	cp := make([]string, len(s.lines))
+	copy(cp, s.lines)
+	b.lines = cp
+	b.row = s.row
+	b.col = s.col
+}
+
+// Checkpoint records the current state for undo and clears the redo stack.
+// The editor calls this once before each mutating action.
+func (b *Buffer) Checkpoint() {
+	b.undo = append(b.undo, b.snapshot())
+	if len(b.undo) > maxUndo {
+		b.undo = b.undo[len(b.undo)-maxUndo:]
+	}
+	b.redo = nil
+}
+
+// Undo reverts to the previous checkpoint. Returns false if there is none.
+func (b *Buffer) Undo() bool {
+	if len(b.undo) == 0 {
+		return false
+	}
+	b.redo = append(b.redo, b.snapshot())
+	last := b.undo[len(b.undo)-1]
+	b.undo = b.undo[:len(b.undo)-1]
+	b.restore(last)
+	return true
+}
+
+// Redo reapplies the most recently undone state. Returns false if there is none.
+func (b *Buffer) Redo() bool {
+	if len(b.redo) == 0 {
+		return false
+	}
+	b.undo = append(b.undo, b.snapshot())
+	last := b.redo[len(b.redo)-1]
+	b.redo = b.redo[:len(b.redo)-1]
+	b.restore(last)
+	return true
 }
 
 // New creates a Buffer from lines. Empty input becomes a single blank line.
