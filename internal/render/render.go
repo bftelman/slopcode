@@ -10,6 +10,28 @@ import (
 	"github.com/bftelman/slopcode/internal/buffer"
 )
 
+// TabWidth is the number of columns a tab stop spans.
+const TabWidth = 4
+
+// StyleName is the chroma style used for syntax highlighting.
+const StyleName = "monokai"
+
+// screenCol returns the screen x-offset of byteCol in line, expanding tabs.
+func screenCol(line string, byteCol, tabWidth int) int {
+	x := 0
+	for i, r := range line {
+		if i >= byteCol {
+			break
+		}
+		if r == '\t' {
+			x += tabWidth - (x % tabWidth)
+		} else {
+			x++
+		}
+	}
+	return x
+}
+
 // GutterWidth returns the column width reserved for line numbers plus separator.
 func GutterWidth(lineCount int) int {
 	digits := len(strconv.Itoa(lineCount))
