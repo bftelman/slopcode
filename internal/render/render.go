@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gdamore/tcell/v2"
 
@@ -50,8 +51,10 @@ func GutterWidth(lineCount int) int {
 }
 
 func drawText(s tcell.Screen, x, y int, text string, style tcell.Style) {
-	for i, r := range text {
-		s.SetContent(x+i, y, r, nil, style)
+	col := 0
+	for _, r := range text {
+		s.SetContent(x+col, y, r, nil, style)
+		col++
 	}
 }
 
@@ -183,6 +186,57 @@ func DrawSidebar(s tcell.Screen, br *filebrowser.Browser) {
 		}
 		drawText(s, 0, y, clipPad(" "+label, sep), st)
 	}
+	s.Show()
+}
+
+var splashArt = []string{
+	"█████ █     █████ █████ █████ █████ ████  █████",
+	"█     █     █   █ █   █ █     █   █ █   █ █    ",
+	"█████ █     █   █ █████ █     █   █ █   █ █████",
+	"    █ █     █   █ █     █     █   █ █   █ █    ",
+	"█████ █████ █████ █     █████ █████ ████  █████",
+}
+
+const splashSubtitle = "by @bftelman"
+
+// DrawSplash renders the no-file welcome screen: statusbar + centered banner.
+func DrawSplash(s tcell.Screen, filename, notice string) {
+	s.Clear()
+	width, height := s.Size()
+
+	bar := tcell.StyleDefault.Reverse(true)
+	for x := 0; x < width; x++ {
+		s.SetContent(x, 0, ' ', nil, bar)
+	}
+	drawText(s, 0, 0, clip(" "+filename, width), bar)
+	if notice != "" {
+		noticeStyle := bar.Foreground(tcell.ColorGreen)
+		nx := width - utf8.RuneCountInString(notice) - 1
+		if nx > utf8.RuneCountInString(filename)+2 {
+			drawText(s, nx, 0, notice, noticeStyle)
+		}
+	}
+
+	artStyle := tcell.StyleDefault.Foreground(tcell.ColorAqua)
+	block := len(splashArt) + 2 // banner + blank line + subtitle
+	top := 1 + (height-1-block)/2
+	if top < 1 {
+		top = 1
+	}
+	for i, line := range splashArt {
+		x := (width - utf8.RuneCountInString(line)) / 2
+		if x < 0 {
+			x = 0
+		}
+		drawText(s, x, top+i, line, artStyle)
+	}
+	sx := (width - utf8.RuneCountInString(splashSubtitle)) / 2
+	if sx < 0 {
+		sx = 0
+	}
+	drawText(s, sx, top+len(splashArt)+1, splashSubtitle, tcell.StyleDefault)
+
+	s.HideCursor()
 	s.Show()
 }
 
