@@ -9,6 +9,7 @@ import (
 
 	"github.com/bftelman/slopcode/internal/buffer"
 	"github.com/bftelman/slopcode/internal/fileio"
+	"github.com/bftelman/slopcode/internal/render"
 )
 
 // TestRunTypesEditsAndSaves drives the real event loop through a simulation
@@ -97,6 +98,70 @@ func TestRunNoticeSetOnSaveClearedOnNextKey(t *testing.T) {
 	if e.notice != "" {
 		t.Fatalf("notice should clear on next key, got %q", e.notice)
 	}
+}
+
+// TestBrowserRendersSideBySide confirms the sidebar and editor draw together:
+// the file entry appears in the left panel and the editor statusbar in the
+// region to the right of the sidebar.
+func TestBrowserRendersSideBySide(t *testing.T) {
+	dir := t.TempDir()
+	start := filepath.Join(dir, "start.txt")
+	if err := os.WriteFile(start, []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	lines, _ := fileio.Load(start)
+	e := New(s, buffer.New(lines), start)
+	e.handleKey(keyEvent(tcell.KeyCtrlB))
+	e.draw()
+
+	cells, width, height := s.GetContents()
+	rowText := func(y, x0, x1 int) string {
+		var out []rune
+		for x := x0; x < x1; x++ {
+			r := cells[y*width+x].Runes
+			if len(r) == 1 {
+				out = append(out, r[0])
+			} else {
+				out = append(out, ' ')
+			}
+		}
+		return string(out)
+	}
+
+	// Left panel lists the file somewhere.
+	leftHas := false
+	for y := 0; y < height; y++ {
+		if strContains(rowText(y, 0, render.SidebarWidth-1), "start.txt") {
+			leftHas = true
+			break
+		}
+	}
+	if !leftHas {
+		t.Fatal("sidebar (left region) should list start.txt")
+	}
+
+	// Editor statusbar renders in the region right of the sidebar (cursor indicator
+	// is always present regardless of how long the path is).
+	if !strContains(rowText(0, render.SidebarWidth, width), "Ln 1, Col 1") {
+		t.Fatalf("editor statusbar not drawn in right region: %q", rowText(0, render.SidebarWidth, width))
+	}
+}
+
+func strContains(haystack, needle string) bool {
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if haystack[i:i+len(needle)] == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func keyEvent(k tcell.Key, ch ...rune) *tcell.EventKey {
