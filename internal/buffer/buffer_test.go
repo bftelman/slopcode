@@ -134,3 +134,35 @@ func TestBackspaceAtStartNoop(t *testing.T) {
 		t.Fatalf("want ab got %q", b.Lines()[0])
 	}
 }
+
+func TestInsertTabFromColZero(t *testing.T) {
+	b := New([]string{""})
+	b.InsertTab(4)
+	if b.Lines()[0] != "    " {
+		t.Fatalf("want 4 spaces, got %q", b.Lines()[0])
+	}
+	if _, c := b.Cursor(); c != 4 {
+		t.Fatalf("want col 4 got %d", c)
+	}
+}
+
+func TestInsertTabToNextStop(t *testing.T) {
+	b := New([]string{"ab"})
+	b.MoveEnd() // col 2
+	b.InsertTab(4)
+	if b.Lines()[0] != "ab  " { // 2 spaces to reach stop 4
+		t.Fatalf("want 'ab  ', got %q", b.Lines()[0])
+	}
+	if _, c := b.Cursor(); c != 4 {
+		t.Fatalf("want col 4 got %d", c)
+	}
+}
+
+func TestInsertTabOnStopInsertsFullWidth(t *testing.T) {
+	b := New([]string{"abcd"})
+	b.MoveEnd() // col 4
+	b.InsertTab(4)
+	if b.Lines()[0] != "abcd    " {
+		t.Fatalf("want full tab, got %q", b.Lines()[0])
+	}
+}
