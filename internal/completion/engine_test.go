@@ -2,6 +2,8 @@ package completion
 
 import (
 	"path/filepath"
+	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
@@ -61,6 +63,49 @@ func TestEngineNewUpdateCancelsInflight(t *testing.T) {
 		t.Fatal("first request context was not cancelled")
 	}
 	close(block)
+}
+
+// TestEngineCloseDuringDispatchNoPanic reproduces a race where Close() would
+// cancel only the latest request, then immediately close(e.results) and the
+// providers without waiting for outstanding dispatch goroutines. A dispatch
+// goroutine using a fast, non-blocking provider could then be selecting on
+// `e.results <- ...` / `<-ctx.Done()` at the exact moment cancel() and
+// close(e.results) run concurrently on the loop goroutine; Go's select does
+// not prefer the safe branch, so it can pick the send and panic.
+//
+// Each iteration fires Update, waits only until the provider's Complete has
+// started (so a dispatch goroutine is definitely in flight, without ever
+// draining Results()), then calls Close immediately — maximizing the odds of
+// landing in that window. Running many parallel workers, each yielding via
+// runtime.Gosched() while polling, produces exactly the scheduler
+// interleaving needed to hit it reliably within a few seconds: on the old
+// code this reliably panics with "send on closed channel"; on the fixed code
+// it must never panic.
+func TestEngineCloseDuringDispatchNoPanic(t *testing.T) {
+	const workers = 16
+	const perWorker = 800
+	doc := Document{URI: "file:///a.go", Version: 1}
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < perWorker; i++ {
+				f := &fakeProvider{items: []Item{{Label: "x"}}}
+				e := New(regFor(f), WithDebounce(time.Millisecond))
+				e.Update(doc, Position{})
+				deadline := time.Now().Add(15 * time.Millisecond)
+				for f.callCount() == 0 && time.Now().Before(deadline) {
+					runtime.Gosched() // yield so the dispatch/loop goroutines can run
+				}
+				if err := e.Close(); err != nil {
+					t.Errorf("Close returned error: %v", err)
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func TestEngineUnsupportedExtensionYieldsNothing(t *testing.T) {

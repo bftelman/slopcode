@@ -3,6 +3,7 @@ package completion
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -39,6 +40,10 @@ type Engine struct {
 	debounce time.Duration
 	cmds     chan command
 	results  chan Result
+
+	ctx       context.Context
+	cancelAll context.CancelFunc
+	wg        sync.WaitGroup
 }
 
 // New builds and starts an Engine.
@@ -52,6 +57,7 @@ func New(reg Registry, opts ...Option) *Engine {
 	for _, o := range opts {
 		o(e)
 	}
+	e.ctx, e.cancelAll = context.WithCancel(context.Background())
 	go e.loop()
 	return e
 }
@@ -155,9 +161,8 @@ func (e *Engine) loop() {
 				if timer != nil {
 					timer.Stop()
 				}
-				if cancel != nil {
-					cancel()
-				}
+				e.cancelAll() // cancels every in-flight request's derived ctx
+				e.wg.Wait()   // wait for all dispatch goroutines to finish
 				for _, p := range providers {
 					if p != nil {
 						_ = p.Close()
@@ -172,10 +177,12 @@ func (e *Engine) loop() {
 			if p == nil {
 				continue
 			}
-			ctx, cf := context.WithCancel(context.Background())
+			ctx, cf := context.WithCancel(e.ctx)
 			cancel = cf
 			doc, pos := curDoc, curPos
+			e.wg.Add(1)
 			go func() {
+				defer e.wg.Done()
 				if s, ok := p.(DocSink); ok {
 					_ = s.DidChange(doc) // sync before requesting
 				}
