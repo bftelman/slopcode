@@ -81,3 +81,25 @@ func readMessage(r *bufio.Reader) ([]byte, error) {
 	}
 	return body, nil
 }
+
+type rpcResponse struct {
+	ID     int             `json:"id"`
+	Result json.RawMessage `json:"result"`
+	Error  *rpcError       `json:"error"`
+}
+
+type rpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func (e *rpcError) Error() string { return fmt.Sprintf("lsp error %d: %s", e.Code, e.Message) }
+
+// serverMessage is the minimal shape used to route an incoming message: a
+// response (has id, no method) vs a server-initiated request/notification.
+type serverMessage struct {
+	ID     *int            `json:"id"`
+	Method string          `json:"method"`
+	Result json.RawMessage `json:"result"`
+	Error  *rpcError       `json:"error"`
+}
