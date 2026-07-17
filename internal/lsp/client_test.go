@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
 	"testing"
@@ -63,3 +64,48 @@ func TestInitializeHandshake(t *testing.T) {
 type writeCloser struct{ io.Writer }
 
 func (writeCloser) Close() error { return nil }
+
+// TestCallAfterTransportCloseReturnsError verifies that once the transport
+// has died (readLoop hit EOF/an error), any subsequent call() returns an
+// error immediately instead of blocking forever waiting for a response that
+// will never come.
+func TestCallAfterTransportCloseReturnsError(t *testing.T) {
+	pr, pw := io.Pipe()
+	c := newClientPipe(writeCloser{io.Discard}, pr)
+
+	// Kill the read end so readLoop sees EOF and marks the client closed.
+	if err := pw.Close(); err != nil {
+		t.Fatalf("pw.Close: %v", err)
+	}
+
+	type result struct {
+		err error
+	}
+	resCh := make(chan result, 1)
+	deadline := time.After(2 * time.Second)
+
+	go func() {
+		for {
+			_, err := c.call(context.Background(), "ping", nil)
+			if err != nil {
+				resCh <- result{err: err}
+				return
+			}
+			select {
+			case <-deadline:
+				resCh <- result{err: nil}
+				return
+			default:
+			}
+		}
+	}()
+
+	select {
+	case res := <-resCh:
+		if res.err == nil {
+			t.Fatal("call after transport close: got nil error, want non-nil")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("call hung after transport close")
+	}
+}

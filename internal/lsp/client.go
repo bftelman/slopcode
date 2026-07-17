@@ -17,9 +17,11 @@ type Client struct {
 
 	wmu sync.Mutex // serializes writes
 
-	mu      sync.Mutex // guards nextID and pending
-	nextID  int
-	pending map[int]chan rpcResponse
+	mu       sync.Mutex // guards nextID, pending, closed, and closeErr
+	nextID   int
+	pending  map[int]chan rpcResponse
+	closed   bool
+	closeErr error
 
 	cmd *exec.Cmd
 }
@@ -86,6 +88,8 @@ func (c *Client) deliver(id int, resp rpcResponse) {
 
 func (c *Client) failPending(err error) {
 	c.mu.Lock()
+	c.closed = true
+	c.closeErr = err
 	for id, ch := range c.pending {
 		ch <- rpcResponse{ID: id, Error: &rpcError{Code: -1, Message: err.Error()}}
 		delete(c.pending, id)
@@ -102,6 +106,11 @@ func (c *Client) reply(id int) error {
 // call sends a request and waits for its response or ctx cancellation.
 func (c *Client) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	c.mu.Lock()
+	if c.closed {
+		err := c.closeErr
+		c.mu.Unlock()
+		return nil, err
+	}
 	c.nextID++
 	id := c.nextID
 	ch := make(chan rpcResponse, 1)
