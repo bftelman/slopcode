@@ -109,3 +109,36 @@ func TestCallAfterTransportCloseReturnsError(t *testing.T) {
 		t.Fatal("call hung after transport close")
 	}
 }
+
+func TestCompletionDecodesList(t *testing.T) {
+	cin, sin := io.Pipe()
+	sout, cout := io.Pipe()
+	c := newClientPipe(writeCloser{sin}, sout)
+
+	go func() {
+		r := bufio.NewReader(cin)
+		body, _ := readMessage(r)
+		var req struct {
+			ID int `json:"id"`
+		}
+		_ = json.Unmarshal(body, &req)
+		resp := map[string]any{
+			"jsonrpc": "2.0", "id": req.ID,
+			"result": map[string]any{
+				"isIncomplete": false,
+				"items": []map[string]any{
+					{"label": "Println", "insertText": "Println", "kind": 3},
+				},
+			},
+		}
+		_ = writeMessage(writeCloser{cout}, resp)
+	}()
+
+	items, err := c.Completion(context.Background(), "file:///x.go", Position{Line: 0, Character: 0})
+	if err != nil {
+		t.Fatalf("Completion: %v", err)
+	}
+	if len(items) != 1 || items[0].Label != "Println" {
+		t.Fatalf("items = %+v, want one Println", items)
+	}
+}

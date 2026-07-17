@@ -181,4 +181,66 @@ func (c *Client) Initialize(rootURI string) (string, error) {
 	return enc, nil
 }
 
+// DidOpen notifies the server a document was opened.
+func (c *Client) DidOpen(uri, languageID string, version int, text string) error {
+	return c.notify("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri": uri, "languageId": languageID, "version": version, "text": text,
+		},
+	})
+}
+
+// DidChange notifies the server of a full-text document replacement.
+func (c *Client) DidChange(uri string, version int, text string) error {
+	return c.notify("textDocument/didChange", map[string]any{
+		"textDocument":   map[string]any{"uri": uri, "version": version},
+		"contentChanges": []map[string]any{{"text": text}},
+	})
+}
+
+// DidClose notifies the server a document was closed.
+func (c *Client) DidClose(uri string) error {
+	return c.notify("textDocument/didClose", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	})
+}
+
+// Completion requests completions at pos. It accepts both a bare item array
+// and a CompletionList result shape.
+func (c *Client) Completion(ctx context.Context, uri string, pos Position) ([]CompletionItem, error) {
+	raw, err := c.call(ctx, "textDocument/completion", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     pos,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	// Try CompletionList first, then a bare array.
+	var list struct {
+		Items []CompletionItem `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &list); err == nil && list.Items != nil {
+		return list.Items, nil
+	}
+	var arr []CompletionItem
+	if err := json.Unmarshal(raw, &arr); err != nil {
+		return nil, err
+	}
+	return arr, nil
+}
+
+// Shutdown asks the server to shut down and terminates the process.
+func (c *Client) Shutdown() error {
+	_, _ = c.call(context.Background(), "shutdown", nil)
+	_ = c.notify("exit", nil)
+	_ = c.in.Close()
+	if c.cmd != nil {
+		_ = c.cmd.Wait()
+	}
+	return nil
+}
+
 var _ = fmt.Sprintf
