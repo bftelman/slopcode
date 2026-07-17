@@ -36,6 +36,14 @@ func TestInitializeHandshake(t *testing.T) {
 			},
 		}
 		_ = writeMessage(writeCloser{cout}, resp)
+		// Drain any further client messages (e.g. the "initialized"
+		// notification Initialize sends after the request) so the client's
+		// blocking pipe writes do not deadlock.
+		for {
+			if _, err := readMessage(r); err != nil {
+				return
+			}
+		}
 	}()
 
 	enc, err := c.Initialize("file:///tmp")
