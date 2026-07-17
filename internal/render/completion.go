@@ -62,7 +62,7 @@ func DrawCompletion(s tcell.Screen, p Popup) {
 	}
 
 	normal := tcell.StyleDefault.Reverse(true)
-	sel := tcell.StyleDefault.Bold(true)
+	sel := normal.Bold(true) // layer emphasis onto the box, don't replace it
 	for i := 0; i < rows; i++ {
 		idx := start + i
 		st := normal
