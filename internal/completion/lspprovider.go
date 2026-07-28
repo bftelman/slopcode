@@ -91,7 +91,7 @@ func LSPRegistry(specs map[string]ServerSpec) Registry {
 		if !ok {
 			return nil, nil
 		}
-		client, err := lsp.Start(spec.Cmd, spec.Args)
+		client, err := lsp.Start(resolveCmd(spec.Cmd), spec.Args)
 		if err != nil {
 			return nil, nil
 		}
