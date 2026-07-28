@@ -3,6 +3,7 @@ package editor
 
 import (
 	"path/filepath"
+	"sync"
 
 	"github.com/gdamore/tcell/v2"
 
@@ -29,6 +30,7 @@ type Editor struct {
 	eng        *completion.Engine
 	docVersion int
 	popup      *render.Popup // nil when the completion popup is closed
+	popupMu    sync.Mutex    // guards popup: written on Run()'s goroutine, polled by tests
 }
 
 // New builds an Editor with the default gopls-backed completion engine.
@@ -151,12 +153,15 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 	return false
 }
 
-// tryQuit returns true only when it is safe to quit (no unsaved changes).
+// tryQuit returns true only when it is safe to quit (no unsaved changes). On
+// the confirmed-quit path it also shuts down the completion engine (and its
+// gopls subprocess, if any) so Run() never returns with an orphaned process.
 func (e *Editor) tryQuit() bool {
 	if e.isModified() {
 		e.notice = "unsaved changes — Ctrl+S to save before quitting"
 		return false
 	}
+	e.eng.Close()
 	return true
 }
 

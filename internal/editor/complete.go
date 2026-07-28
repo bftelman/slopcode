@@ -77,12 +77,16 @@ func (e *Editor) applyResult(res completion.Result) {
 	gw := render.GutterWidth(e.b.LineCount())
 	p.Anchor.X = gw + col
 	p.Anchor.Y = row - e.scroll + 1
+	e.popupMu.Lock()
 	e.popup = p
+	e.popupMu.Unlock()
 }
 
 func (e *Editor) dismissPopup() {
 	if e.popup != nil {
+		e.popupMu.Lock()
 		e.popup = nil
+		e.popupMu.Unlock()
 		e.eng.Cancel()
 	}
 }
@@ -130,8 +134,15 @@ func (e *Editor) acceptCompletion() {
 	e.eng.SyncOnly(e.document()) // keep server in sync after accept
 }
 
-// popupOpenForTest reports whether the completion popup is visible.
-func (e *Editor) popupOpenForTest() bool { return e.popup != nil }
+// popupOpenForTest reports whether the completion popup is visible. It is
+// polled from a test goroutine while Run() mutates e.popup on its own
+// goroutine (via applyResult/dismissPopup), so it goes through popupMu —
+// the same lock those setters take — to stay race-safe under `-race`.
+func (e *Editor) popupOpenForTest() bool {
+	e.popupMu.Lock()
+	defer e.popupMu.Unlock()
+	return e.popup != nil
+}
 
 // identChar reports whether r is part of an identifier ([A-Za-z0-9_]).
 func identChar(r rune) bool {

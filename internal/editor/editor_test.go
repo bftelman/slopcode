@@ -441,6 +441,46 @@ func (p *stubProvider) Complete(ctx context.Context, _ completion.Document, _ co
 }
 func (p *stubProvider) Close() error { return nil }
 
+// closeTrackingProvider records whether Close was called, so the quit path
+// test can assert the engine actually shuts its providers down.
+type closeTrackingProvider struct{ closed bool }
+
+func (p *closeTrackingProvider) Complete(context.Context, completion.Document, completion.Position) ([]completion.Item, error) {
+	return nil, nil
+}
+func (p *closeTrackingProvider) Close() error {
+	p.closed = true
+	return nil
+}
+
+// TestQuitClosesCompletionEngine confirms the confirmed-quit path
+// (tryQuit's true branch) shuts down the completion engine, which in turn
+// closes every provider it opened — this is what prevents a real gopls
+// subprocess from being orphaned on quit.
+func TestQuitClosesCompletionEngine(t *testing.T) {
+	prov := &closeTrackingProvider{}
+	reg := completion.Registry{Factory: func(ext, root string) (completion.Provider, error) {
+		return prov, nil
+	}}
+	eng := completion.New(reg)
+
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	e := NewWithEngine(s, buffer.New(nil), "main.go", eng)
+
+	if !e.tryQuit() {
+		t.Fatal("expected tryQuit to succeed on an unmodified buffer")
+	}
+	if !prov.closed {
+		t.Fatal("expected quitting to call eng.Close(), which closes the provider")
+	}
+}
+
 func waitFor(t *testing.T, cond func() bool) {
 	t.Helper()
 	deadline := time.After(2 * time.Second)
