@@ -16,6 +16,12 @@ bar), but it is not modal: you type into the buffer straight away, no insert or 
   pair, typing the closing character steps over it, and deleting an empty pair removes both
   characters.
 - A file browser sidebar (Ctrl+B) for moving between files without leaving the editor.
+- Automatic code completion for Go files, backed by `gopls` over LSP. A popup appears as
+  you type an identifier or after `.`; each item shows a kind tag (`[F]` function, `[V]`
+  variable, `[C]` constant, `[P]` field, `[K]` keyword, `[T]` type, `[M]` module) colored
+  from the same chroma theme as syntax highlighting. Up/Down selects, Enter or Tab accepts,
+  Esc dismisses. Completion is best-effort: without `gopls` installed, editing is unaffected
+  and no popup appears.
 - Undo and redo.
 - A welcome screen when you start with no filename.
 - Save notifications and an unsaved-changes guard on quit.
@@ -24,6 +30,9 @@ bar), but it is not modal: you type into the buffer straight away, no insert or 
 
 - Go 1.25 or newer.
 - A terminal. Windows, macOS, and Linux are supported through the tcell library.
+- Optional: [`gopls`](https://pkg.go.dev/golang.org/x/tools/gopls) on `$PATH`, `$GOBIN`, or
+  `$(go env GOPATH)/bin`, for Go code completion. Its absence is not an error — completion
+  is simply disabled.
 
 ## Build and run
 
@@ -66,6 +75,14 @@ Editing:
 | Ctrl+B | Open the file browser |
 | Ctrl+Q | Quit (blocked while there are unsaved changes) |
 
+Completion popup (while open):
+
+| Key | Action |
+| --- | --- |
+| Up / Down | Move the selection |
+| Enter or Tab | Accept the selected item |
+| Esc | Dismiss the popup |
+
 File browser:
 
 | Key | Action |
@@ -93,8 +110,10 @@ The code is split into small packages, each with one job:
 | `internal/autopair` | Bracket and quote completion on top of the buffer. |
 | `internal/filebrowser` | Directory listing and navigation. |
 | `internal/highlight` | Turns source text into colored runes with chroma. |
-| `internal/render` | Draws the status bar, gutter, text, sidebar, and welcome screen. |
-| `internal/editor` | The event loop that ties input, buffer, and rendering together. |
+| `internal/lsp` | Minimal JSON-RPC client for LSP servers (subprocess, doc sync, completion). |
+| `internal/completion` | UI-free completion engine: debounce, provider dispatch, gopls provider. |
+| `internal/render` | Draws the status bar, gutter, text, sidebar, welcome screen, and completion popup. |
+| `internal/editor` | The event loop that ties input, buffer, completion, and rendering together. |
 | `main.go` | Argument parsing and startup. |
 
 ## Tests
@@ -103,6 +122,13 @@ The code is split into small packages, each with one job:
 go test ./...
 ```
 
-The `buffer`, `fileio`, `autopair`, and `filebrowser` packages have unit tests. The editor
-and render packages are checked through a simulated screen that drives the real event loop
-and inspects the resulting cells.
+The `buffer`, `fileio`, `autopair`, `filebrowser`, `lsp`, `completion`, and `highlight`
+packages have unit tests. The editor and render packages are checked through a simulated
+screen that drives the real event loop and inspects the resulting cells.
+
+A real-`gopls` integration test is excluded from the default run (`//go:build lsp_integration`)
+since it needs `gopls` installed. Run it explicitly with:
+
+```
+go test -tags lsp_integration ./internal/completion/ -run TestGoplsRealCompletion -v
+```
