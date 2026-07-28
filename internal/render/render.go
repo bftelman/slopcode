@@ -24,6 +24,14 @@ const StyleName = "monokai"
 // SidebarWidth is the column width of the file browser panel.
 const SidebarWidth = 30
 
+// ScreenCol returns the screen x-offset of byteCol in line, expanding tabs
+// and accounting for multi-byte runes — for UI elements (e.g. the
+// completion popup) that must anchor at the same screen position Draw put
+// the cursor, not at the buffer's byte column.
+func ScreenCol(line string, byteCol, tabWidth int) int {
+	return screenCol(line, byteCol, tabWidth)
+}
+
 // screenCol returns the screen x-offset of byteCol in line, expanding tabs.
 func screenCol(line string, byteCol, tabWidth int) int {
 	x := 0

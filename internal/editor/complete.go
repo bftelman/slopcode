@@ -75,7 +75,13 @@ func (e *Editor) applyResult(res completion.Result) {
 	p := &render.Popup{Items: res.Items, Sel: 0}
 	row, col := e.b.Cursor()
 	gw := render.GutterWidth(e.b.LineCount())
-	p.Anchor.X = gw + col
+	scrCol := col
+	if lines := e.b.Lines(); row >= 0 && row < len(lines) {
+		// Match Draw's own cursor placement (render.go): byteCol is not the
+		// screen column once tabs or multi-byte runes are involved.
+		scrCol = render.ScreenCol(lines[row], col, render.TabWidth)
+	}
+	p.Anchor.X = gw + scrCol
 	p.Anchor.Y = row - e.scroll + 1
 	e.popupMu.Lock()
 	e.popup = p
@@ -142,6 +148,17 @@ func (e *Editor) popupOpenForTest() bool {
 	e.popupMu.Lock()
 	defer e.popupMu.Unlock()
 	return e.popup != nil
+}
+
+// popupAnchorForTest exposes the popup's anchor; (-1, -1) if closed. Guarded
+// by popupMu like popupOpenForTest, for the same cross-goroutine reason.
+func (e *Editor) popupAnchorForTest() (x, y int) {
+	e.popupMu.Lock()
+	defer e.popupMu.Unlock()
+	if e.popup == nil {
+		return -1, -1
+	}
+	return e.popup.Anchor.X, e.popup.Anchor.Y
 }
 
 // identChar reports whether r is part of an identifier ([A-Za-z0-9_]).
