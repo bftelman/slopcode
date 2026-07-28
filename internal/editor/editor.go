@@ -128,16 +128,22 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 		e.docVersion++
 		e.requestCompletion(0)
 	case tcell.KeyLeft:
+		e.dismissPopup() // a stale popup's items/anchor no longer match the new cursor position
 		e.b.MoveLeft()
 	case tcell.KeyRight:
+		e.dismissPopup()
 		e.b.MoveRight()
 	case tcell.KeyUp:
+		e.dismissPopup()
 		e.b.MoveUp()
 	case tcell.KeyDown:
+		e.dismissPopup()
 		e.b.MoveDown()
 	case tcell.KeyHome:
+		e.dismissPopup()
 		e.b.MoveHome()
 	case tcell.KeyEnd:
+		e.dismissPopup()
 		e.b.MoveEnd()
 	case tcell.KeyTab:
 		e.b.Checkpoint()
@@ -186,6 +192,7 @@ func (e *Editor) save() {
 }
 
 func (e *Editor) openBrowser() {
+	e.dismissPopup() // the browser paints over it, and it made no sense there anyway
 	dir := filepath.Dir(e.path)
 	if dir == "" {
 		dir = "."
@@ -241,13 +248,24 @@ func (e *Editor) browseEnter() {
 		e.notice = "OPEN ERROR: " + err.Error()
 		return
 	}
+	// Tell the completion engine the old document is gone before swapping
+	// e.path out from under it — otherwise it keeps sending didChange for a
+	// URI it never opened, and the new file never gets a didOpen at all.
+	e.dismissPopup()
+	if oldURI := e.uri(); oldURI != "" {
+		e.eng.CloseDoc(oldURI)
+	}
 	e.b = buffer.New(lines)
 	e.path = path
 	e.scroll = 0
 	e.baseline = cloneLines(e.b.Lines())
+	e.docVersion++
 	e.browser = nil
 	e.pendingOpen = ""
 	e.notice = path + " opened"
+	if e.path != "" {
+		e.eng.Open(e.document())
+	}
 }
 
 // draw adjusts the scroll offset to keep the cursor visible, then renders.
