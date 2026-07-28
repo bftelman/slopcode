@@ -63,12 +63,19 @@ func (e *Editor) requestCompletion(r rune) {
 		e.dismissPopup()
 		return
 	}
-	e.eng.Update(e.document(), e.cursorPos())
+	pos := e.cursorPos()
+	e.reqPos = pos
+	e.eng.Update(e.document(), pos)
 }
 
-// applyResult shows the popup for a fresh, non-empty result; drops stale ones.
+// applyResult shows the popup for a fresh, non-empty result; drops stale
+// ones. A result is stale either by document version (a later edit
+// superseded it) or by cursor position (the cursor moved since the request
+// was issued — dismissPopup's eng.Cancel() closes most of this window, but
+// a result already handed to bridge/PostEvent before that Cancel takes
+// effect cannot be recalled, so it must still be checked here).
 func (e *Editor) applyResult(res completion.Result) {
-	if res.Version != e.docVersion || res.Err != nil || len(res.Items) == 0 {
+	if res.Version != e.docVersion || e.cursorPos() != e.reqPos || res.Err != nil || len(res.Items) == 0 {
 		e.dismissPopup()
 		return
 	}
@@ -88,13 +95,16 @@ func (e *Editor) applyResult(res completion.Result) {
 	e.popupMu.Unlock()
 }
 
+// dismissPopup closes the popup (if open) and always cancels any pending or
+// in-flight request — unconditionally, not just when a popup was already
+// visible, so a request that debounced and started running before the
+// cursor moved (but before its result arrived) gets cancelled too, not just
+// results that already opened a popup.
 func (e *Editor) dismissPopup() {
-	if e.popup != nil {
-		e.popupMu.Lock()
-		e.popup = nil
-		e.popupMu.Unlock()
-		e.eng.Cancel()
-	}
+	e.popupMu.Lock()
+	e.popup = nil
+	e.popupMu.Unlock()
+	e.eng.Cancel()
 }
 
 // handlePopupKey routes a key while the popup is open. Returns true if consumed.

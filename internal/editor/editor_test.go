@@ -659,6 +659,86 @@ func TestCursorMovementDismissesPopupPreventingCorruption(t *testing.T) {
 	}
 }
 
+// blockingProvider blocks Complete until block is closed (or ctx is
+// cancelled), so tests can control exactly when an in-flight request
+// resolves relative to other editor actions.
+type blockingProvider struct {
+	items []completion.Item
+	block chan struct{}
+}
+
+func (p *blockingProvider) Complete(ctx context.Context, _ completion.Document, _ completion.Position) ([]completion.Item, error) {
+	select {
+	case <-p.block:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return p.items, nil
+}
+func (p *blockingProvider) Close() error { return nil }
+
+// TestInFlightRequestCancelledByMovementDoesNotCorrupt reproduces the gap a
+// re-review of the movement-dismiss fix found: dismissPopup only cancelled
+// the engine when a popup was already *visible*. A request that had already
+// debounced and was running on the provider (but had not yet returned) was
+// left uncancelled by a cursor move, and its late result — checked only
+// against docVersion, which movement doesn't bump — could still open the
+// popup (or worse, be silently applied) after the cursor had already moved.
+func TestInFlightRequestCancelledByMovementDoesNotCorrupt(t *testing.T) {
+	block := make(chan struct{})
+	prov := &blockingProvider{items: []completion.Item{{Label: "Println", Insert: "Println"}}, block: block}
+	reg := completion.Registry{Factory: func(ext, root string) (completion.Provider, error) {
+		return prov, nil
+	}}
+	eng := completion.New(reg, completion.WithDebounce(5*time.Millisecond))
+
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	s.SetSize(80, 24)
+	b := buffer.New([]string{"Pri"})
+	b.MoveEnd()
+	e := NewWithEngine(s, b, filepath.Join(t.TempDir(), "main.go"), eng)
+
+	done := make(chan struct{})
+	go func() { e.Run(); close(done) }()
+
+	s.InjectKey(tcell.KeyRune, 'n', tcell.ModNone) // "Prin"; debounce will fire into the blocked provider
+	time.Sleep(30 * time.Millisecond)              // let the debounce fire; Complete is now blocked
+
+	s.InjectKey(tcell.KeyLeft, 0, tcell.ModNone) // move while the request is still in flight
+	close(block)                                 // now let the stale Complete() return
+
+	// The popup must never open for this superseded request, however late
+	// its result arrives.
+	deadline := time.After(300 * time.Millisecond)
+poll:
+	for {
+		select {
+		case <-deadline:
+			break poll
+		default:
+			if e.popupOpenForTest() {
+				t.Fatal("a result for a request superseded by cursor movement must not open the popup")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+
+	s.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	s.InjectKey(tcell.KeyCtrlS, 0, tcell.ModNone)
+	s.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after Ctrl+Q")
+	}
+	if got := b.Lines()[0] + "|" + b.Lines()[1]; got != "Pri|n" {
+		t.Fatalf("lines = %q, want split \"Pri\"/\"n\" (no corruption from a stale in-flight result)", got)
+	}
+}
+
 // TestOpenBrowserDismissesPopup reproduces the bug the final review flagged:
 // Ctrl+B while the popup was open left it stuck on screen, overlapping the
 // sidebar, with no key able to close it.

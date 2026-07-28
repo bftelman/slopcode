@@ -29,8 +29,9 @@ type Editor struct {
 
 	eng        *completion.Engine
 	docVersion int
-	popup      *render.Popup // nil when the completion popup is closed
-	popupMu    sync.Mutex    // guards popup: written on Run()'s goroutine, polled by tests
+	reqPos     completion.Position // cursor position the outstanding request was issued at
+	popup      *render.Popup       // nil when the completion popup is closed
+	popupMu    sync.Mutex          // guards popup: written on Run()'s goroutine, polled by tests
 }
 
 // New builds an Editor with the default gopls-backed completion engine.
