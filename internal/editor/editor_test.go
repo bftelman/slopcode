@@ -1,13 +1,16 @@
 package editor
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 
 	"github.com/bftelman/slopcode/internal/buffer"
+	"github.com/bftelman/slopcode/internal/completion"
 	"github.com/bftelman/slopcode/internal/fileio"
 	"github.com/bftelman/slopcode/internal/render"
 )
@@ -428,4 +431,92 @@ func TestRunBackspaceJoinsLines(t *testing.T) {
 	if lines := b.Lines(); len(lines) != 1 || lines[0] != "abcd" {
 		t.Fatalf("lines = %#v, want [abcd]", b.Lines())
 	}
+}
+
+// stubProvider returns canned items for editor tests.
+type stubProvider struct{ items []completion.Item }
+
+func (p *stubProvider) Complete(ctx context.Context, _ completion.Document, _ completion.Position) ([]completion.Item, error) {
+	return p.items, nil
+}
+func (p *stubProvider) Close() error { return nil }
+
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.After(2 * time.Second)
+	for !cond() {
+		select {
+		case <-deadline:
+			t.Fatal("condition not met in time")
+		default:
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+}
+
+func TestCompletionPopupOpensAndAccepts(t *testing.T) {
+	items := []completion.Item{{Label: "Println", Insert: "Println"}}
+	reg := completion.Registry{Factory: func(ext, root string) (completion.Provider, error) {
+		return &stubProvider{items: items}, nil
+	}}
+	eng := completion.New(reg, completion.WithDebounce(5*time.Millisecond))
+
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	s.SetSize(80, 24)
+	b := buffer.New([]string{"Pri"})
+	b.MoveEnd()
+	e := NewWithEngine(s, b, "main.go", eng)
+
+	// Simulate typing a trigger and receiving a result via the event loop.
+	go e.Run()
+	s.InjectKey(tcell.KeyRune, 'n', tcell.ModNone) // now "Prin"
+	// Allow debounce + bridge to deliver and the loop to render.
+	waitFor(t, func() bool { return e.popupOpenForTest() })
+
+	// Accept with Enter.
+	s.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	waitFor(t, func() bool { return !e.popupOpenForTest() })
+
+	if got := b.Lines()[0]; got != "Println" {
+		t.Fatalf("line = %q, want Println", got)
+	}
+	s.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
+}
+
+func TestCompletionDropsStaleVersion(t *testing.T) {
+	eng := completion.New(completion.Registry{}, completion.WithDebounce(time.Millisecond))
+	s := tcell.NewSimulationScreen("")
+	_ = s.Init()
+	s.SetSize(80, 24)
+	e := NewWithEngine(s, buffer.New([]string{""}), "main.go", eng)
+	e.docVersion = 5
+	e.applyResult(completion.Result{Version: 2, Items: []completion.Item{{Label: "old"}}})
+	if e.popupOpenForTest() {
+		t.Fatal("stale result must not open the popup")
+	}
+}
+
+func TestCompletionMissingServerIsNonFatal(t *testing.T) {
+	// Registry that always fails to produce a provider.
+	reg := completion.Registry{Factory: func(ext, root string) (completion.Provider, error) {
+		return nil, nil
+	}}
+	eng := completion.New(reg, completion.WithDebounce(time.Millisecond))
+	s := tcell.NewSimulationScreen("")
+	_ = s.Init()
+	s.SetSize(80, 24)
+	b := buffer.New([]string{"a"})
+	b.MoveEnd()
+	e := NewWithEngine(s, b, "main.go", eng)
+	go e.Run()
+	s.InjectKey(tcell.KeyRune, 'b', tcell.ModNone)
+	time.Sleep(50 * time.Millisecond)
+	// Editor still responsive and no popup.
+	if e.popupOpenForTest() {
+		t.Fatal("no provider -> no popup")
+	}
+	s.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
 }

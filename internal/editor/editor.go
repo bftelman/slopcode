@@ -8,6 +8,7 @@ import (
 
 	"github.com/bftelman/slopcode/internal/autopair"
 	"github.com/bftelman/slopcode/internal/buffer"
+	"github.com/bftelman/slopcode/internal/completion"
 	"github.com/bftelman/slopcode/internal/filebrowser"
 	"github.com/bftelman/slopcode/internal/fileio"
 	"github.com/bftelman/slopcode/internal/render"
@@ -19,16 +20,31 @@ type Editor struct {
 	b           *buffer.Buffer
 	path        string
 	scroll      int
-	baseline    []string // content as last loaded/saved; "modified" is derived from this
-	notice      string   // transient message; cleared on the next key
+	baseline    []string             // content as last loaded/saved; "modified" is derived from this
+	notice      string               // transient message; cleared on the next key
 	browser     *filebrowser.Browser // non-nil while browsing
 	pendingOpen string               // unsaved-changes guard latch
 	splashShown bool                 // true when the last frame was the splash screen
+
+	eng        *completion.Engine
+	docVersion int
+	popup      *render.Popup // nil when the completion popup is closed
 }
 
-// New builds an Editor for the given screen, buffer, and file path.
+// New builds an Editor with the default gopls-backed completion engine.
 func New(s tcell.Screen, b *buffer.Buffer, path string) *Editor {
-	return &Editor{s: s, b: b, path: path, baseline: cloneLines(b.Lines())}
+	eng := completion.New(completion.LSPRegistry(completion.GoplsSpecs()))
+	return NewWithEngine(s, b, path, eng)
+}
+
+// NewWithEngine builds an Editor with an injected completion engine (tests).
+func NewWithEngine(s tcell.Screen, b *buffer.Buffer, path string, eng *completion.Engine) *Editor {
+	e := &Editor{s: s, b: b, path: path, baseline: cloneLines(b.Lines()), eng: eng}
+	if path != "" {
+		e.eng.Open(e.document())
+	}
+	go e.bridge()
+	return e
 }
 
 // isModified reports whether the buffer differs from the last loaded/saved state.
@@ -66,6 +82,8 @@ func (e *Editor) Run() {
 			if e.handleKey(ev) {
 				return
 			}
+		case *completionEvent:
+			e.applyResult(ev.res)
 		}
 		e.draw()
 	}
@@ -75,6 +93,11 @@ func (e *Editor) Run() {
 func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 	if e.browser != nil {
 		return e.handleBrowseKey(ev)
+	}
+	if e.popup != nil {
+		if e.handlePopupKey(ev) {
+			return false
+		}
 	}
 	e.notice = "" // any key clears the transient notice
 	switch ev.Key() {
@@ -86,14 +109,22 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 		e.save()
 	case tcell.KeyCtrlZ:
 		e.b.Undo()
+		e.docVersion++
+		e.dismissPopup()
 	case tcell.KeyCtrlY:
 		e.b.Redo()
+		e.docVersion++
+		e.dismissPopup()
 	case tcell.KeyEnter:
 		e.b.Checkpoint()
 		e.b.InsertNewline()
+		e.docVersion++
+		e.requestCompletion(0)
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		e.b.Checkpoint()
 		autopair.Backspace(e.b)
+		e.docVersion++
+		e.requestCompletion(0)
 	case tcell.KeyLeft:
 		e.b.MoveLeft()
 	case tcell.KeyRight:
@@ -109,9 +140,13 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 	case tcell.KeyTab:
 		e.b.Checkpoint()
 		e.b.InsertTab(render.TabWidth)
+		e.docVersion++
+		e.requestCompletion(0)
 	case tcell.KeyRune:
 		e.b.Checkpoint()
 		autopair.InsertRune(e.b, ev.Rune())
+		e.docVersion++
+		e.requestCompletion(ev.Rune())
 	}
 	return false
 }
@@ -234,6 +269,9 @@ func (e *Editor) draw() {
 		render.DrawSidebar(e.s, e.browser)
 	} else {
 		render.Draw(e.s, e.b, e.displayName(), e.notice, modified, e.scroll, 0, true)
+	}
+	if e.popup != nil {
+		render.DrawCompletion(e.s, *e.popup)
 	}
 	// Leaving the splash: the OSC 8 link left an open hyperlink region. Force a
 	// full repaint so tcell re-emits every cell, closing the link and clearing

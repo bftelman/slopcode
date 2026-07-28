@@ -23,6 +23,7 @@ const (
 	cmdOpen
 	cmdCloseDoc
 	cmdClose
+	cmdSync
 )
 
 type command struct {
@@ -79,6 +80,10 @@ func (e *Engine) Cancel() { e.cmds <- command{kind: cmdCancel} }
 
 // CloseDoc registers that a document is gone (LSP didClose).
 func (e *Engine) CloseDoc(uri string) { e.cmds <- command{kind: cmdCloseDoc, uri: uri} }
+
+// SyncOnly records a document change without requesting completions (e.g. after
+// an accept), keeping the provider's view current.
+func (e *Engine) SyncOnly(doc Document) { e.cmds <- command{kind: cmdSync, doc: doc} }
 
 // Close stops the engine, cancels in-flight work, and closes all providers.
 func (e *Engine) Close() error {
@@ -155,6 +160,12 @@ func (e *Engine) loop() {
 				if p := providers[filepath.Ext(c.uri)]; p != nil {
 					if s, ok := p.(DocSink); ok {
 						_ = s.DidClose(c.uri)
+					}
+				}
+			case cmdSync:
+				if p := provFor(c.doc.URI); p != nil {
+					if s, ok := p.(DocSink); ok {
+						_ = s.DidChange(c.doc)
 					}
 				}
 			case cmdClose:
