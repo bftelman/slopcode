@@ -2,6 +2,8 @@ package completion
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 
 	"github.com/bftelman/slopcode/internal/lsp"
 )
@@ -95,7 +97,7 @@ func LSPRegistry(specs map[string]ServerSpec) Registry {
 		if err != nil {
 			return nil, nil
 		}
-		rootURI := "file:///" + root
+		rootURI := PathToFileURI(root)
 		enc, err := client.Initialize(rootURI)
 		if err != nil {
 			_ = client.Shutdown()
@@ -108,4 +110,17 @@ func LSPRegistry(specs map[string]ServerSpec) Registry {
 // GoplsSpecs is the MVP registry: Go via gopls.
 func GoplsSpecs() map[string]ServerSpec {
 	return map[string]ServerSpec{".go": {Cmd: "gopls", LangID: "go"}}
+}
+
+// PathToFileURI converts an absolute filesystem path to a file:// URI.
+// Unix paths already start with '/', so filepath.ToSlash returns "/abs/path",
+// and "file://" + "/abs/path" = "file:///abs/path" (correct, three slashes).
+// Windows paths may be "C:\path" which becomes "C:/path" after filepath.ToSlash;
+// to get "file:///C:/path" (correct), we add a leading "/" first.
+func PathToFileURI(path string) string {
+	p := filepath.ToSlash(path)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return "file://" + p
 }
