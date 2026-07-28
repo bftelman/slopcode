@@ -47,7 +47,7 @@ func TestInitializeHandshake(t *testing.T) {
 		}
 	}()
 
-	enc, err := c.Initialize("file:///tmp")
+	enc, err := c.Initialize(context.Background(), "file:///tmp")
 	if err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
@@ -107,6 +107,32 @@ func TestCallAfterTransportCloseReturnsError(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("call hung after transport close")
+	}
+}
+
+// TestShutdownDoesNotHangOnUnresponsiveServer verifies Shutdown returns in
+// bounded time even when the server never replies to the "shutdown" request
+// — a caller on a single-goroutine actor (or the editor's quit path) must
+// not be able to hang here.
+func TestShutdownDoesNotHangOnUnresponsiveServer(t *testing.T) {
+	pr, pw := io.Pipe()
+	c := newClientPipe(writeCloser{io.Discard}, pr)
+	t.Cleanup(func() { _ = pw.Close() })
+
+	start := time.Now()
+	done := make(chan struct{})
+	go func() {
+		_ = c.Shutdown()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(shutdownRPCTimeout + 2*time.Second):
+		t.Fatal("Shutdown hung past its bounded timeout")
+	}
+	if elapsed := time.Since(start); elapsed > shutdownRPCTimeout+time.Second {
+		t.Fatalf("Shutdown took %v, want close to shutdownRPCTimeout (%v)", elapsed, shutdownRPCTimeout)
 	}
 }
 

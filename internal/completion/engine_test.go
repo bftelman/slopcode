@@ -108,6 +108,40 @@ func TestEngineCloseDuringDispatchNoPanic(t *testing.T) {
 	wg.Wait()
 }
 
+// TestEngineUpdateAndCancelDoNotBlockOnSlowFactory reproduces the hang the
+// final review flagged: provFor calls the registry's Factory synchronously
+// on the loop goroutine (mirroring LSPRegistry's real lsp.Start+Initialize
+// call), so while a slow factory is starting, Update/Cancel must not block
+// the caller (the UI thread in production) — they're safe to drop since a
+// later Update supersedes an earlier one anyway.
+func TestEngineUpdateAndCancelDoNotBlockOnSlowFactory(t *testing.T) {
+	const factoryDelay = 300 * time.Millisecond
+	f := &fakeProvider{items: []Item{{Label: "x"}}}
+	slow := Registry{Factory: func(ext, root string) (Provider, error) {
+		if ext != ".go" {
+			return nil, nil
+		}
+		time.Sleep(factoryDelay)
+		return f, nil
+	}}
+	e := New(slow, WithDebounce(5*time.Millisecond))
+	defer e.Close()
+
+	// Arm the debounce timer; once it fires, the loop enters provFor and
+	// sleeps for factoryDelay, unable to service e.cmds meanwhile.
+	e.Update(Document{URI: "file:///a.go", Version: 1}, Position{})
+	time.Sleep(20 * time.Millisecond) // let the debounce fire and provFor start sleeping
+
+	start := time.Now()
+	for i := 0; i < 20; i++ {
+		e.Update(Document{URI: "file:///a.go", Version: i + 2}, Position{})
+		e.Cancel()
+	}
+	if elapsed := time.Since(start); elapsed > factoryDelay/2 {
+		t.Fatalf("20 Update+Cancel calls took %v while the factory was busy; want well under %v (non-blocking)", elapsed, factoryDelay)
+	}
+}
+
 func TestEngineUnsupportedExtensionYieldsNothing(t *testing.T) {
 	f := &fakeProvider{items: []Item{{Label: "x"}}}
 	e := New(regFor(f), WithDebounce(10*time.Millisecond))

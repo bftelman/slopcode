@@ -8,7 +8,15 @@ import (
 	"io"
 	"os/exec"
 	"sync"
+	"time"
 )
+
+// shutdownRPCTimeout bounds the "shutdown" request itself.
+const shutdownRPCTimeout = 2 * time.Second
+
+// shutdownWait bounds how long Shutdown waits for the subprocess to exit
+// after the exit notification before killing it.
+const shutdownWait = 3 * time.Second
 
 // Client is a JSON-RPC 2.0 client speaking LSP to a subprocess over stdio.
 type Client struct {
@@ -149,8 +157,10 @@ func (c *Client) notify(method string, params any) error {
 }
 
 // Initialize performs the initialize/initialized handshake and returns the
-// server's chosen position encoding ("utf-16" if unspecified).
-func (c *Client) Initialize(rootURI string) (string, error) {
+// server's chosen position encoding ("utf-16" if unspecified). ctx bounds
+// the request — a caller on a single-goroutine actor (like completion.Engine)
+// must not let a hung server block it indefinitely.
+func (c *Client) Initialize(ctx context.Context, rootURI string) (string, error) {
 	params := map[string]any{
 		"processId": nil,
 		"rootUri":   rootURI,
@@ -159,7 +169,7 @@ func (c *Client) Initialize(rootURI string) (string, error) {
 			"textDocument": map[string]any{"completion": map[string]any{}},
 		},
 	}
-	raw, err := c.call(context.Background(), "initialize", params)
+	raw, err := c.call(ctx, "initialize", params)
 	if err != nil {
 		return "", err
 	}
@@ -232,13 +242,27 @@ func (c *Client) Completion(ctx context.Context, uri string, pos Position) ([]Co
 	return arr, nil
 }
 
-// Shutdown asks the server to shut down and terminates the process.
+// Shutdown asks the server to shut down and terminates the process. Both the
+// shutdown request and the process wait are bounded, so a hung or
+// unresponsive server cannot block a caller (e.g. the editor's quit path)
+// indefinitely — the process is killed if it outlives shutdownWait.
 func (c *Client) Shutdown() error {
-	_, _ = c.call(context.Background(), "shutdown", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownRPCTimeout)
+	defer cancel()
+	_, _ = c.call(ctx, "shutdown", nil)
 	_ = c.notify("exit", nil)
 	_ = c.in.Close()
 	if c.cmd != nil {
-		_ = c.cmd.Wait()
+		done := make(chan error, 1)
+		go func() { done <- c.cmd.Wait() }()
+		select {
+		case <-done:
+		case <-time.After(shutdownWait):
+			if c.cmd.Process != nil {
+				_ = c.cmd.Process.Kill()
+			}
+			<-done
+		}
 	}
 	return nil
 }

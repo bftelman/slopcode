@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/bftelman/slopcode/internal/lsp"
 )
@@ -92,6 +93,11 @@ func mapKind(k int) Kind {
 	}
 }
 
+// initializeTimeout bounds LSPRegistry's Initialize call. The factory runs
+// synchronously on the completion.Engine's single loop goroutine, so an
+// unresponsive server must not be able to block it indefinitely.
+const initializeTimeout = 5 * time.Second
+
 // LSPRegistry builds a Registry that starts one gopls-style server per
 // extension. A start or initialize failure yields (nil, nil): completion is
 // disabled for that extension, never fatal.
@@ -106,7 +112,9 @@ func LSPRegistry(specs map[string]ServerSpec) Registry {
 			return nil, nil
 		}
 		rootURI := PathToFileURI(root)
-		enc, err := client.Initialize(rootURI)
+		ctx, cancel := context.WithTimeout(context.Background(), initializeTimeout)
+		defer cancel()
+		enc, err := client.Initialize(ctx, rootURI)
 		if err != nil {
 			_ = client.Shutdown()
 			return nil, nil

@@ -47,12 +47,17 @@ type Engine struct {
 	wg        sync.WaitGroup
 }
 
+// cmdBuffer sized so per-keystroke Update/Cancel sends (see below) rarely
+// need their non-blocking fallback even while the loop is briefly busy
+// (e.g. starting a provider).
+const cmdBuffer = 8
+
 // New builds and starts an Engine.
 func New(reg Registry, opts ...Option) *Engine {
 	e := &Engine{
 		reg:      reg,
 		debounce: defaultDebounce,
-		cmds:     make(chan command),
+		cmds:     make(chan command, cmdBuffer),
 		results:  make(chan Result, 1),
 	}
 	for _, o := range opts {
@@ -71,12 +76,26 @@ func (e *Engine) Results() <-chan Result { return e.results }
 func (e *Engine) Open(doc Document) { e.cmds <- command{kind: cmdOpen, doc: doc} }
 
 // Update records an edit; the engine debounces then requests completions.
+// Non-blocking: if the loop is momentarily busy (e.g. starting a provider)
+// and the command buffer is full, this drops the update rather than
+// blocking the UI thread — safe, since a later keystroke's Update
+// supersedes it anyway, and the loop is never busy for long (provider
+// creation is itself bounded, e.g. LSPRegistry's initializeTimeout).
 func (e *Engine) Update(doc Document, pos Position) {
-	e.cmds <- command{kind: cmdUpdate, doc: doc, pos: pos}
+	select {
+	case e.cmds <- command{kind: cmdUpdate, doc: doc, pos: pos}:
+	default:
+	}
 }
 
 // Cancel abandons any pending request without issuing a new one.
-func (e *Engine) Cancel() { e.cmds <- command{kind: cmdCancel} }
+// Non-blocking for the same reason as Update.
+func (e *Engine) Cancel() {
+	select {
+	case e.cmds <- command{kind: cmdCancel}:
+	default:
+	}
+}
 
 // CloseDoc registers that a document is gone (LSP didClose).
 func (e *Engine) CloseDoc(uri string) { e.cmds <- command{kind: cmdCloseDoc, uri: uri} }
