@@ -45,7 +45,7 @@ func (e *Editor) uri() string {
 	if err != nil {
 		abs = e.path
 	}
-	return "file:///" + filepath.ToSlash(abs)
+	return completion.PathToFileURI(abs)
 }
 
 // cursorPos returns the cursor as a completion.Position (byte column).
