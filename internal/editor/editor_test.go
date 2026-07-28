@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -408,6 +409,93 @@ func TestBrowserUnsavedGuard(t *testing.T) {
 	}
 }
 
+// recordingProvider tracks DocSink calls (keyed by URI) so a file-switch
+// test can assert the completion engine tells the server the old document
+// closed and the new one opened.
+type recordingProvider struct {
+	mu     sync.Mutex
+	opened []string
+	closed []string
+}
+
+func (p *recordingProvider) Complete(context.Context, completion.Document, completion.Position) ([]completion.Item, error) {
+	return nil, nil
+}
+func (p *recordingProvider) Close() error { return nil }
+func (p *recordingProvider) DidOpen(doc completion.Document) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.opened = append(p.opened, doc.URI)
+	return nil
+}
+func (p *recordingProvider) DidChange(completion.Document) error { return nil }
+func (p *recordingProvider) DidClose(uri string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.closed = append(p.closed, uri)
+	return nil
+}
+
+func containsStr(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
+// TestBrowserSwitchSyncsCompletionEngine reproduces the bug the final review
+// flagged: switching files via the file browser swapped e.b/e.path but never
+// told the completion engine, so the provider kept seeing didChange for a
+// document it never opened and never learned the old one closed — silently
+// breaking completion (or worse, feeding edits to the wrong document) after
+// every Ctrl+B file switch.
+func TestBrowserSwitchSyncsCompletionEngine(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "other.go")
+	if err := os.WriteFile(target, []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	start := filepath.Join(dir, "start.go")
+	if err := os.WriteFile(start, []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	prov := &recordingProvider{}
+	reg := completion.Registry{Factory: func(ext, root string) (completion.Provider, error) {
+		return prov, nil
+	}}
+	eng := completion.New(reg)
+
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Fini()
+	s.SetSize(80, 24)
+
+	lines, _ := fileio.Load(start)
+	e := NewWithEngine(s, buffer.New(lines), start, eng)
+
+	e.handleKey(keyEvent(tcell.KeyCtrlB))
+	for e.browser.Selected().Name != "other.go" {
+		e.handleKey(keyEvent(tcell.KeyDown))
+	}
+	e.handleKey(keyEvent(tcell.KeyEnter))
+
+	absStart, _ := filepath.Abs(start)
+	absTarget, _ := filepath.Abs(target)
+	startURI := completion.PathToFileURI(absStart)
+	targetURI := completion.PathToFileURI(absTarget)
+
+	waitFor(t, func() bool {
+		prov.mu.Lock()
+		defer prov.mu.Unlock()
+		return containsStr(prov.opened, targetURI) && containsStr(prov.closed, startURI)
+	})
+}
+
 // TestRunBackspaceJoinsLines verifies Backspace at column 0 joins lines.
 func TestRunBackspaceJoinsLines(t *testing.T) {
 	s := tcell.NewSimulationScreen("")
@@ -522,6 +610,116 @@ func TestCompletionPopupOpensAndAccepts(t *testing.T) {
 
 	if got := b.Lines()[0]; got != "Println" {
 		t.Fatalf("line = %q, want Println", got)
+	}
+	s.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
+}
+
+// TestCursorMovementDismissesPopupPreventingCorruption reproduces the bug
+// the final review flagged: leaving the popup open across a cursor move and
+// then accepting used the *new* cursor position with the *old* popup's
+// items, corrupting the buffer ("Pri" + Left + Enter used to yield
+// "Printlni" instead of just moving left and inserting a newline).
+func TestCursorMovementDismissesPopupPreventingCorruption(t *testing.T) {
+	items := []completion.Item{{Label: "Println", Insert: "Println"}}
+	reg := completion.Registry{Factory: func(ext, root string) (completion.Provider, error) {
+		return &stubProvider{items: items}, nil
+	}}
+	eng := completion.New(reg, completion.WithDebounce(5*time.Millisecond))
+
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	s.SetSize(80, 24)
+	b := buffer.New([]string{"Pri"})
+	b.MoveEnd()
+	e := NewWithEngine(s, b, filepath.Join(t.TempDir(), "main.go"), eng)
+
+	done := make(chan struct{})
+	go func() { e.Run(); close(done) }()
+	s.InjectKey(tcell.KeyRune, 'n', tcell.ModNone) // now "Prin"
+	waitFor(t, func() bool { return e.popupOpenForTest() })
+
+	s.InjectKey(tcell.KeyLeft, 0, tcell.ModNone)
+	waitFor(t, func() bool { return !e.popupOpenForTest() })
+
+	s.InjectKey(tcell.KeyEnter, 0, tcell.ModNone) // must be a plain newline, not an accept
+	s.InjectKey(tcell.KeyCtrlS, 0, tcell.ModNone) // clear modified so Ctrl+Q is allowed to quit
+	s.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after Ctrl+Q")
+	}
+	// Run() has returned (a real synchronization point via the closed
+	// channel), so reading b directly here is race-safe.
+	if got := b.Lines()[0] + "|" + b.Lines()[1]; got != "Pri|n" {
+		t.Fatalf("lines = %q, want split \"Pri\"/\"n\" (no corruption from a stale popup)", got)
+	}
+}
+
+// TestOpenBrowserDismissesPopup reproduces the bug the final review flagged:
+// Ctrl+B while the popup was open left it stuck on screen, overlapping the
+// sidebar, with no key able to close it.
+func TestOpenBrowserDismissesPopup(t *testing.T) {
+	items := []completion.Item{{Label: "Println", Insert: "Println"}}
+	reg := completion.Registry{Factory: func(ext, root string) (completion.Provider, error) {
+		return &stubProvider{items: items}, nil
+	}}
+	eng := completion.New(reg, completion.WithDebounce(5*time.Millisecond))
+
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	s.SetSize(80, 24)
+	b := buffer.New([]string{"Pri"})
+	b.MoveEnd()
+	e := NewWithEngine(s, b, filepath.Join(t.TempDir(), "main.go"), eng)
+
+	go e.Run()
+	s.InjectKey(tcell.KeyRune, 'n', tcell.ModNone)
+	waitFor(t, func() bool { return e.popupOpenForTest() })
+
+	s.InjectKey(tcell.KeyCtrlB, 0, tcell.ModNone)
+	waitFor(t, func() bool { return !e.popupOpenForTest() })
+
+	s.InjectKey(tcell.KeyCtrlB, 0, tcell.ModNone) // close the browser
+	s.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
+}
+
+// TestCompletionPopupAnchorsAtScreenColumnNotByteColumn reproduces the bug
+// the final review flagged: the popup anchored at the cursor's byte column,
+// which diverges from its screen column (what render.Draw actually uses to
+// place the cursor) once a tab is involved, misplacing the popup on any
+// tab-indented line.
+func TestCompletionPopupAnchorsAtScreenColumnNotByteColumn(t *testing.T) {
+	items := []completion.Item{{Label: "Println", Insert: "Println"}}
+	reg := completion.Registry{Factory: func(ext, root string) (completion.Provider, error) {
+		return &stubProvider{items: items}, nil
+	}}
+	eng := completion.New(reg, completion.WithDebounce(5*time.Millisecond))
+
+	s := tcell.NewSimulationScreen("")
+	if err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	s.SetSize(80, 24)
+	b := buffer.New([]string{"\tPri"}) // leading tab expands wider than 1 byte-column
+	b.MoveEnd()
+	e := NewWithEngine(s, b, "main.go", eng)
+
+	go e.Run()
+	s.InjectKey(tcell.KeyRune, 'n', tcell.ModNone) // "\tPrin", byte col 5
+	waitFor(t, func() bool { return e.popupOpenForTest() })
+
+	x, _ := e.popupAnchorForTest()
+	gw := render.GutterWidth(b.LineCount())
+	byteCol := gw + 5                 // what the old, wrong code produced
+	wantX := gw + render.TabWidth + 4 // tab expands to TabWidth, then "Prin" is 4 more columns
+	if x != wantX {
+		t.Fatalf("Anchor.X = %d, want %d (screen column; byte column would wrongly be %d)", x, wantX, byteCol)
 	}
 	s.InjectKey(tcell.KeyCtrlQ, 0, tcell.ModNone)
 }

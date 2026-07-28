@@ -4,15 +4,18 @@ package completion
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 )
 
 func TestGoplsRealCompletion(t *testing.T) {
-	if _, err := exec.LookPath("gopls"); err != nil {
-		t.Skip("gopls not on PATH")
+	// resolveCmd, not a bare exec.LookPath: production resolves gopls via
+	// $GOBIN/$GOPATH/bin when it's not on $PATH (see resolvecmd.go), and this
+	// guard must match that or it silently skips on exactly the machines
+	// that fallback exists for, giving no real coverage there.
+	if resolveCmd("gopls") == "gopls" {
+		t.Skip("gopls not resolvable via PATH, GOBIN, or GOPATH/bin")
 	}
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.go")
