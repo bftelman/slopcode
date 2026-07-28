@@ -13,6 +13,9 @@ const (
 	KindVariable
 	KindKeyword
 	KindField
+	KindConstant
+	KindType   // class/struct/interface
+	KindModule // package/namespace
 )
 
 // Item is one completion candidate.

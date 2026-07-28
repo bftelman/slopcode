@@ -68,17 +68,25 @@ func (p *lspProvider) Complete(ctx context.Context, doc Document, pos Position) 
 
 func (p *lspProvider) Close() error { return p.conn.Shutdown() }
 
-// mapKind maps a subset of LSP CompletionItemKind numbers to our Kind.
+// mapKind maps a subset of LSP CompletionItemKind numbers to our Kind. See
+// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#completionItemKind
+// for the full numbering; unmapped kinds fall back to KindText.
 func mapKind(k int) Kind {
 	switch k {
-	case 3: // Function
+	case 2, 3, 4: // Method, Function, Constructor
 		return KindFunction
 	case 6: // Variable
 		return KindVariable
 	case 5: // Field
 		return KindField
+	case 7, 8, 22: // Class, Interface, Struct
+		return KindType
+	case 9: // Module
+		return KindModule
 	case 14: // Keyword
 		return KindKeyword
+	case 21: // Constant
+		return KindConstant
 	default:
 		return KindText
 	}

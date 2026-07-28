@@ -80,6 +80,31 @@ func TestStripFileSchemeHandlesMultipleLeadingSlashes(t *testing.T) {
 	}
 }
 
+func TestMapKind(t *testing.T) {
+	cases := []struct {
+		lspKind int
+		want    Kind
+	}{
+		{2, KindFunction},  // Method
+		{3, KindFunction},  // Function
+		{4, KindFunction},  // Constructor
+		{5, KindField},     // Field
+		{6, KindVariable},  // Variable
+		{7, KindType},      // Class
+		{8, KindType},      // Interface
+		{9, KindModule},    // Module
+		{14, KindKeyword},  // Keyword
+		{21, KindConstant}, // Constant
+		{22, KindType},     // Struct
+		{999, KindText},    // unmapped -> fallback
+	}
+	for _, c := range cases {
+		if got := mapKind(c.lspKind); got != c.want {
+			t.Errorf("mapKind(%d) = %v, want %v", c.lspKind, got, c.want)
+		}
+	}
+}
+
 func TestLSPProviderMapsItemsAndSyncsOnce(t *testing.T) {
 	conn := &fakeConn{items: []lsp.CompletionItem{{Label: "Println", InsertText: "Println", Kind: 3}}}
 	p := newLSPProvider(conn, "go", "utf-8")
