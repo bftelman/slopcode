@@ -36,6 +36,10 @@ type pickState struct {
 	sel   int
 	total int
 	err   error
+
+	// loading is true while the candidate listing is still running, so the
+	// overlay can say "searching" instead of "no matches".
+	loading bool
 }
 
 // pickerRoot resolves the directory a file picker lists from: the nearest
@@ -71,7 +75,7 @@ func (e *Editor) startPicker(src picker.Source) {
 	e.browser = nil
 	e.pendingOpen = ""
 	e.pickGen++
-	e.pick = &pickState{title: src.Title(), gen: e.pickGen}
+	e.pick = &pickState{title: src.Title(), gen: e.pickGen, loading: true}
 	e.pk.Open(e.pickGen, src)
 }
 
@@ -88,7 +92,7 @@ func (e *Editor) applyPickResult(res picker.Result) {
 		return
 	}
 	p := e.pick
-	p.rows, p.total, p.err = res.Rows, res.Total, res.Err
+	p.rows, p.total, p.err, p.loading = res.Rows, res.Total, res.Err, res.Loading
 	if p.sel >= len(p.rows) {
 		p.sel = len(p.rows) - 1
 	}
@@ -172,11 +176,12 @@ func (e *Editor) acceptPick() {
 // picker projects the overlay state onto its render value.
 func (p *pickState) picker() render.Picker {
 	return render.Picker{
-		Title: p.title,
-		Query: p.query,
-		Rows:  p.rows,
-		Sel:   p.sel,
-		Total: p.total,
-		Err:   p.err,
+		Title:   p.title,
+		Query:   p.query,
+		Rows:    p.rows,
+		Sel:     p.sel,
+		Total:   p.total,
+		Err:     p.err,
+		Loading: p.loading,
 	}
 }

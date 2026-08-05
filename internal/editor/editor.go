@@ -12,6 +12,7 @@ import (
 	"github.com/bftelman/slopcode/internal/completion"
 	"github.com/bftelman/slopcode/internal/filebrowser"
 	"github.com/bftelman/slopcode/internal/fileio"
+	"github.com/bftelman/slopcode/internal/highlight"
 	"github.com/bftelman/slopcode/internal/picker"
 	"github.com/bftelman/slopcode/internal/render"
 )
@@ -27,6 +28,11 @@ type Editor struct {
 	browser     *filebrowser.Browser // non-nil while browsing
 	pendingOpen string               // unsaved-changes guard latch
 	splashShown bool                 // true when the last frame was the splash screen
+
+	// hl memoizes syntax highlighting across repaints. Without it every repaint -
+	// including cursor moves and picker navigation - re-tokenizes the whole
+	// document through chroma, which dominates frame cost on larger files.
+	hl highlight.Cache
 
 	find    *findState // non-nil while the find/replace bar is open
 	pick    *pickState // non-nil while the fuzzy picker overlay is open
@@ -318,6 +324,7 @@ func (e *Editor) draw() {
 	// the overlay is never drawn at all.
 	if e.browser == nil && e.pick == nil && e.find == nil && e.path == "" && !e.isModified() {
 		render.DrawSplash(e.s, e.displayName(), e.notice)
+		render.Flush(e.s)
 		e.splashShown = true
 		return
 	}
@@ -344,6 +351,7 @@ func (e *Editor) draw() {
 		Scroll:     e.scroll,
 		ShowCursor: true,
 		BottomRows: bottomRows,
+		Hl:         &e.hl,
 	}
 	if e.find != nil {
 		// The find bar draws its own cursor in the focused field, and there is
@@ -371,6 +379,9 @@ func (e *Editor) draw() {
 	if e.pick != nil {
 		render.DrawPicker(e.s, e.pick.picker())
 	}
+	// One flush for the whole composed frame. Flushing per-surface would put an
+	// overlay-less intermediate frame on screen every repaint — see render.Flush.
+	render.Flush(e.s)
 	// Leaving the splash: the OSC 8 link left an open hyperlink region. Force a
 	// full repaint so tcell re-emits every cell, closing the link and clearing
 	// any ghost underlines the terminal painted while it was open.

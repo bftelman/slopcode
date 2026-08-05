@@ -65,6 +65,36 @@ without a terminal — buffer contents reach `textsearch` and `picker` as a plai
   assumed: stdlib wins or ties at every needle length because it dispatches to SIMD
   assembly in `internal/bytealg`. See the design spec and `textsearch.BenchmarkFindAll`.
 
+## Rendering performance
+
+These three were real, measured regressions. Each has a test guarding it; don't
+undo them.
+
+- **One flush per frame.** No `Draw*` function calls `Show`; `internal/editor`
+  composes every surface and then calls `render.Flush` exactly once. Flushing
+  inside each drawer put an intermediate frame on screen every repaint — `Draw`
+  repaints the text area over where an overlay was, so its flush showed the
+  editor *without* the overlay and the next flush painted it back, a visible
+  full-frame flicker per keystroke. `TestDrawFlushesExactlyOncePerFrame` pins it.
+- **Syntax highlighting is cached across repaints** via `highlight.Cache`, held
+  by the editor and passed in `render.Frame.Hl`. Chroma re-tokenizes the whole
+  document — ~40 ms for 9 KB, ~175 ms for 49 KB, over a second for 200 KB — and
+  `Draw` runs on every repaint including cursor moves that cannot change the
+  text. Cursor movement measured 513 ms per keystroke on a 2000-line file before
+  the cache and 2.1 ms after. The cache keys on the text itself, not a version
+  counter, so it cannot go stale if an edit path forgets to bump something.
+- **Picker candidates load off the engine loop and are cached by
+  `Source.Key`.** Listing a project measured ~200 ms on Windows, nearly all of it
+  subprocess overhead (a bare process spawn is ~30-60 ms). `Open` emits a
+  `Loading` result immediately so the overlay appears at once, loads in a
+  goroutine, and serves a cached list instantly on reopen while refreshing behind
+  it. A failed refresh must not replace good cached data. `Source.Key` returning
+  `""` opts out — correct for buffer lines, which change constantly and need no
+  subprocess.
+- **`exec.LookPath` results are memoized** (`picker.lookTool`). The probe costs
+  ~30 ms and was paid on every picker open for a tool that is not installed;
+  PATH does not change over a session.
+
 ## Commits
 
 Conventional Commits with a package scope (`feat(lsp):`, `feat(completion):`,

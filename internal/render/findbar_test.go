@@ -36,6 +36,7 @@ func TestDrawFindBarShowsQueryAndCounter(t *testing.T) {
 	defer s.Fini()
 
 	DrawFindBar(s, FindBar{Query: "src", Total: 7, Current: 1})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	got := rowText(t, s, 9)
 	if !strings.Contains(got, "Find: src") {
@@ -51,6 +52,7 @@ func TestDrawFindBarZeroMatches(t *testing.T) {
 	defer s.Fini()
 
 	DrawFindBar(s, FindBar{Query: "nope", Total: 0})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	if got := rowText(t, s, 9); !strings.Contains(got, "[0/0]") {
 		t.Errorf("want [0/0] for no matches, got %q", got)
@@ -62,6 +64,7 @@ func TestDrawFindBarReplaceField(t *testing.T) {
 	defer s.Fini()
 
 	DrawFindBar(s, FindBar{Query: "src", Repl: "source", Replace: true, Total: 1})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	got := rowText(t, s, 9)
 	if !strings.Contains(got, "src") || !strings.Contains(got, "source") {
@@ -71,6 +74,7 @@ func TestDrawFindBarReplaceField(t *testing.T) {
 	s2 := newSimScreen(t, 80, 10)
 	defer s2.Fini()
 	DrawFindBar(s2, FindBar{Query: "src", Repl: "source", Replace: false, Total: 1})
+	s2.Show() // compose-then-flush: Draw* no longer flushes
 	if got := rowText(t, s2, 9); strings.Contains(got, "source") {
 		t.Errorf("replace field shown while not revealed: %q", got)
 	}
@@ -81,9 +85,11 @@ func TestDrawFindBarCursorFollowsFocus(t *testing.T) {
 	defer s.Fini()
 
 	DrawFindBar(s, FindBar{Query: "src", Repl: "source", Replace: true, OnRepl: false, Total: 1})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 	qx, _, _ := s.GetCursor()
 
 	DrawFindBar(s, FindBar{Query: "src", Repl: "source", Replace: true, OnRepl: true, Total: 1})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 	rx, _, _ := s.GetCursor()
 
 	if !(rx > qx) {
@@ -96,6 +102,7 @@ func TestDrawFindBarNarrowScreen(t *testing.T) {
 	s := newSimScreen(t, 12, 5)
 	defer s.Fini()
 	DrawFindBar(s, FindBar{Query: "averylongquerystring", Total: 3, Current: 0})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 	if got := rowText(t, s, 4); len([]rune(got)) != 12 {
 		t.Errorf("row is %d cells, want 12: %q", len([]rune(got)), got)
 	}
@@ -111,6 +118,7 @@ func TestDrawReservesBottomRows(t *testing.T) {
 	defer s.Fini()
 
 	Draw(s, Frame{Buf: buffer.New(lines), Filename: "t.txt", ShowCursor: true, BottomRows: FindBarRows})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	// Rows 1..8 are text; row 9 is reserved and must be left blank by Draw.
 	if got := strings.TrimSpace(rowText(t, s, 8)); got == "" {
@@ -135,6 +143,7 @@ func TestDrawHighlightsMatchesWithTabs(t *testing.T) {
 	}
 
 	Draw(s, Frame{Buf: b, Filename: "t.txt", ShowCursor: true, Matches: ms, Current: 0})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	cells, width, _ := s.GetContents()
 	gw := GutterWidth(1)
@@ -172,6 +181,7 @@ func TestDrawDistinguishesCurrentMatch(t *testing.T) {
 	}
 
 	Draw(s, Frame{Buf: b, Filename: "t.txt", ShowCursor: true, Matches: ms, Current: 1})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	cells, width, _ := s.GetContents()
 	gw := GutterWidth(1)

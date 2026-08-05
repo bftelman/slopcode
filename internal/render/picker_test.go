@@ -42,6 +42,7 @@ func TestDrawPickerShowsTitleQueryAndRows(t *testing.T) {
 		Rows:  pickerRows("internal/buffer/buffer.go", "internal/buffer/buffer_test.go"),
 		Total: 2,
 	})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	got := screenText(t, s)
 	for _, want := range []string{"Files · slopcode", "> buf", "internal/buffer/buffer.go"} {
@@ -56,6 +57,7 @@ func TestDrawPickerHighlightsSelection(t *testing.T) {
 	defer s.Fini()
 
 	DrawPicker(s, Picker{Title: "T", Rows: pickerRows("first", "second", "third"), Sel: 1, Total: 3})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	cells, width, _ := s.GetContents()
 	// Find the rows holding "first" and "second" and compare their attributes.
@@ -94,6 +96,7 @@ func TestDrawPickerAccentsMatchedCharacters(t *testing.T) {
 		Matched: []int{0, 9, 10}, // "i", "b", "u"
 	}}
 	DrawPicker(s, Picker{Title: "T", Rows: rows, Total: 1})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	cells, width, _ := s.GetContents()
 	var y int = -1
@@ -127,6 +130,7 @@ func TestDrawPickerAccentsAfterMultiByteRune(t *testing.T) {
 	xByte := strings.Index(text, "x")
 	rows := []picker.Row{{Cand: picker.Candidate{Text: text}, Matched: []int{xByte}}}
 	DrawPicker(s, Picker{Title: "T", Rows: rows, Total: 1})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	cells, width, _ := s.GetContents()
 	var y = -1
@@ -155,6 +159,7 @@ func TestDrawPickerNoMatches(t *testing.T) {
 	defer s.Fini()
 
 	DrawPicker(s, Picker{Title: "T", Query: "zzz", Rows: nil, Total: 0})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	if got := screenText(t, s); !strings.Contains(got, "no matches") {
 		t.Errorf("expected a no-matches message:\n%s", got)
@@ -166,6 +171,7 @@ func TestDrawPickerShowsError(t *testing.T) {
 	defer s.Fini()
 
 	DrawPicker(s, Picker{Title: "T", Err: fmt.Errorf("cannot read root")})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	if got := screenText(t, s); !strings.Contains(got, "cannot read root") {
 		t.Errorf("expected the error to be shown:\n%s", got)
@@ -178,6 +184,7 @@ func TestDrawPickerCounterReportsTruncation(t *testing.T) {
 	defer s.Fini()
 
 	DrawPicker(s, Picker{Title: "T", Rows: pickerRows("a", "b"), Total: 4321})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	if got := screenText(t, s); !strings.Contains(got, "4321") {
 		t.Errorf("counter should report the untruncated total:\n%s", got)
@@ -194,6 +201,7 @@ func TestDrawPickerScrollsToSelection(t *testing.T) {
 		texts = append(texts, fmt.Sprintf("row%03d", i))
 	}
 	DrawPicker(s, Picker{Title: "T", Rows: pickerRows(texts...), Sel: 99, Total: 100})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	got := screenText(t, s)
 	if !strings.Contains(got, "row099") {
@@ -209,6 +217,7 @@ func TestDrawPickerTinyScreen(t *testing.T) {
 	for _, dim := range [][2]int{{10, 3}, {20, 4}, {1, 1}, {80, 2}} {
 		s := newSimScreen(t, dim[0], dim[1])
 		DrawPicker(s, Picker{Title: "T", Query: "q", Rows: pickerRows("a", "b", "c"), Sel: 2, Total: 3})
+		s.Show() // compose-then-flush: Draw* no longer flushes
 		s.Fini()
 	}
 }
@@ -219,6 +228,7 @@ func TestDrawPickerCursorInQueryLine(t *testing.T) {
 	defer s.Fini()
 
 	DrawPicker(s, Picker{Title: "T", Query: "abc", Rows: pickerRows("x"), Total: 1})
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	_, cy, visible := s.GetCursor()
 	if !visible {

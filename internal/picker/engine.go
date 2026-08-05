@@ -35,6 +35,11 @@ type Result struct {
 	Rows  []Row // truncated to MaxRows
 	Total int   // total matches before truncation
 	Err   error // non-nil leaves the list empty; never fatal
+
+	// Loading reports that a listing is still in flight, so the rows are either
+	// empty or a cached set from a previous open. The UI uses it to distinguish
+	// "still working" from "genuinely no matches".
+	Loading bool
 }
 
 type cmdKind int
@@ -42,15 +47,18 @@ type cmdKind int
 const (
 	cmdOpen cmdKind = iota
 	cmdQuery
+	cmdLoaded
 	cmdClose
 )
 
 type command struct {
-	kind cmdKind
-	src  Source
-	gen  int
-	q    string
-	done chan struct{}
+	kind  cmdKind
+	src   Source
+	gen   int
+	q     string
+	cands []Candidate
+	err   error
+	done  chan struct{}
 }
 
 // Engine ranks candidates on its own goroutine: debounced, superseded by newer
@@ -64,6 +72,15 @@ type Engine struct {
 	debounce time.Duration
 	cmds     chan command
 	results  chan Result
+
+	// cache holds previously listed candidates by Source.Key, so reopening a
+	// picker serves instantly while a refresh runs behind it. Owned by the loop
+	// goroutine; never touched from outside it.
+	cache map[string][]Candidate
+
+	// quit is closed when the loop stops, so an in-flight loader goroutine can
+	// abandon its send instead of blocking forever on a channel nobody reads.
+	quit chan struct{}
 }
 
 // Option configures an Engine.
@@ -78,6 +95,8 @@ func NewEngine(opts ...Option) *Engine {
 		debounce: defaultDebounce,
 		cmds:     make(chan command, 8),
 		results:  make(chan Result, 1),
+		cache:    map[string][]Candidate{},
+		quit:     make(chan struct{}),
 	}
 	for _, o := range opts {
 		o(e)
@@ -179,10 +198,48 @@ func (e *Engine) loop() {
 			case cmdOpen:
 				gen = c.gen
 				query = ""
-				cands, loadErr = c.src.Candidates()
+				key := c.src.Key()
+
+				// Serve a previously listed set for this source immediately, so
+				// reopening a picker is instant instead of paying the listing cost
+				// again. Listing a project measured ~200 ms on Windows, almost all
+				// of it subprocess overhead.
+				cands, loadErr = nil, nil
+				if key != "" {
+					if cached, ok := e.cache[key]; ok {
+						cands = cached
+					}
+				}
 				rows, idx := rank(cands, "", nil)
 				lastQuery, lastIdx = "", idx
-				e.emit(Result{Gen: gen, Rows: rows, Total: len(idx), Err: loadErr})
+				e.emit(Result{Gen: gen, Rows: rows, Total: len(idx), Loading: true})
+
+				// Load (or refresh) off this goroutine, so the loop keeps handling
+				// keystrokes while an external lister runs. The result comes back
+				// as cmdLoaded and is discarded if the generation moved on.
+				go func(src Source, forGen int) {
+					loaded, err := src.Candidates()
+					select {
+					case e.cmds <- command{kind: cmdLoaded, gen: forGen, cands: loaded, err: err, src: src}:
+					case <-e.quit: // engine closed while we were listing
+					}
+				}(c.src, gen)
+			case cmdLoaded:
+				if c.gen != gen {
+					continue // a picker that has since been closed or replaced
+				}
+				if c.err != nil && len(cands) > 0 {
+					// A refresh failed but we are already showing a cached list;
+					// keep it rather than replacing good data with an error.
+					continue
+				}
+				cands, loadErr = c.cands, c.err
+				if key := c.src.Key(); key != "" && c.err == nil {
+					e.cache[key] = c.cands
+				}
+				rows, idx := rank(cands, query, nil)
+				lastQuery, lastIdx = query, idx
+				e.emit(Result{Gen: gen, Query: query, Rows: rows, Total: len(idx), Err: loadErr})
 			case cmdQuery:
 				query = c.q
 				arm()

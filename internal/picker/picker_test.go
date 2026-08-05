@@ -171,9 +171,14 @@ func testCands(names ...string) []Candidate {
 type staticSource struct {
 	cands []Candidate
 	err   error
+	key   string
 }
 
-func (s staticSource) Title() string                    { return "static" }
+func (s staticSource) Title() string { return "static" }
+
+// key is empty by default so most tests opt out of candidate caching; the
+// caching tests set it explicitly.
+func (s staticSource) Key() string                      { return s.key }
 func (s staticSource) Candidates() ([]Candidate, error) { return s.cands, s.err }
 
 // waitResult reads the next result, failing on timeout.
@@ -212,6 +217,14 @@ func waitFor(t *testing.T, e *Engine, pred func(Result) bool) Result {
 	}
 }
 
+// waitLoaded waits for the result carrying finished candidates. Open emits a
+// Loading placeholder first so the overlay can appear instantly, then a second
+// result once the listing (which may shell out) completes.
+func waitLoaded(t *testing.T, e *Engine) Result {
+	t.Helper()
+	return waitFor(t, e, func(r Result) bool { return !r.Loading })
+}
+
 // Opening emits the full, unfiltered list. fuzzy.Find("") returns nothing, so
 // this is the special case the engine has to handle explicitly.
 func TestEngineOpenEmitsAllCandidates(t *testing.T) {
@@ -219,7 +232,7 @@ func TestEngineOpenEmitsAllCandidates(t *testing.T) {
 	defer e.Close()
 
 	e.Open(1, staticSource{cands: testCands("a.go", "b.go", "c.go")})
-	r := waitResult(t, e)
+	r := waitLoaded(t, e)
 
 	if r.Total != 3 || len(r.Rows) != 3 {
 		t.Errorf("Total=%d Rows=%d, want 3 and 3", r.Total, len(r.Rows))
@@ -238,7 +251,7 @@ func TestEngineRanksAndReportsMatchedOffsets(t *testing.T) {
 		"internal/lsp/client.go",
 		"README.md",
 	)})
-	waitResult(t, e) // the open result
+	waitLoaded(t, e)
 
 	e.Query("ihl")
 	r := waitFor(t, e, func(r Result) bool { return r.Query == "ihl" })
@@ -264,7 +277,7 @@ func TestEngineEmptyQueryAfterFilterRestoresAll(t *testing.T) {
 	defer e.Close()
 
 	e.Open(1, staticSource{cands: testCands("aaa.go", "bbb.go", "ccc.go")})
-	waitResult(t, e)
+	waitLoaded(t, e)
 
 	e.Query("aaa")
 	waitFor(t, e, func(r Result) bool { return r.Query == "aaa" })
@@ -282,7 +295,7 @@ func TestEngineDebouncesBurst(t *testing.T) {
 	defer e.Close()
 
 	e.Open(1, staticSource{cands: testCands("alpha.go", "beta.go")})
-	waitResult(t, e)
+	waitLoaded(t, e) // drain the listing before timing the burst
 
 	for _, q := range []string{"a", "al", "alp", "alph", "alpha"} {
 		e.Query(q)
@@ -307,7 +320,7 @@ func TestEngineEchoesCallerGeneration(t *testing.T) {
 	defer e.Close()
 
 	e.Open(7, staticSource{cands: testCands("a.go")})
-	if got := waitResult(t, e); got.Gen != 7 {
+	if got := waitLoaded(t, e); got.Gen != 7 {
 		t.Errorf("open result Gen = %d, want 7", got.Gen)
 	}
 
@@ -330,7 +343,7 @@ func TestEngineSurfacesLoadError(t *testing.T) {
 	defer e.Close()
 
 	e.Open(1, staticSource{err: errors.New("cannot read root")})
-	r := waitResult(t, e)
+	r := waitLoaded(t, e)
 
 	if r.Err == nil {
 		t.Fatal("expected the load error to be reported")
@@ -349,7 +362,7 @@ func TestEngineTruncatesToMaxRows(t *testing.T) {
 	defer e.Close()
 
 	e.Open(1, staticSource{cands: testCands(names...)})
-	r := waitResult(t, e)
+	r := waitLoaded(t, e)
 
 	if len(r.Rows) != MaxRows {
 		t.Errorf("Rows = %d, want %d", len(r.Rows), MaxRows)

@@ -20,6 +20,11 @@ type Picker struct {
 	Sel   int
 	Total int // total matches, which may exceed len(Rows)
 	Err   error
+
+	// Loading reports that the candidate listing is still running. An empty list
+	// then means "not ready yet", not "nothing matches", and saying so avoids
+	// telling the user their query failed when it has not been run.
+	Loading bool
 }
 
 // matchAccentToken is the chroma token whose color accents the characters that
@@ -109,13 +114,15 @@ func DrawPicker(s tcell.Screen, p Picker) {
 	if p.Err != nil {
 		drawText(s, x0, y0+2, clipPad(" error: "+p.Err.Error(), boxW), panel)
 		s.ShowCursor(x0+3+utf8.RuneCountInString(p.Query), y0+1)
-		s.Show()
 		return
 	}
 	if len(p.Rows) == 0 {
-		drawText(s, x0, y0+2, clipPad(" (no matches)", boxW), panel)
+		msg := " (no matches)"
+		if p.Loading {
+			msg = " (searching…)"
+		}
+		drawText(s, x0, y0+2, clipPad(msg, boxW), panel)
 		s.ShowCursor(x0+3+utf8.RuneCountInString(p.Query), y0+1)
-		s.Show()
 		return
 	}
 
@@ -141,7 +148,6 @@ func DrawPicker(s tcell.Screen, p Picker) {
 		qx = x0 + boxW - 1
 	}
 	s.ShowCursor(qx, y0+1)
-	s.Show()
 }
 
 // accentMatched repaints the runes of text at the given byte offsets in style.

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,6 +27,11 @@ type Candidate struct {
 type Source interface {
 	Title() string
 	Candidates() ([]Candidate, error)
+
+	// Key identifies this source for candidate caching across opens. An empty
+	// key means "do not cache" — right for sources that are cheap to rebuild and
+	// change constantly, like buffer lines.
+	Key() string
 }
 
 // Lister returns root-relative, forward-slashed file paths under root. It is the
@@ -61,6 +67,10 @@ func FilesWith(root string, l Lister) Source { return fileSource{root: root, lis
 
 func (f fileSource) Title() string { return "Files · " + filepath.Base(f.root) }
 
+// Key is the root, so reopening the picker on the same project serves the
+// previously listed files instantly while a refresh runs behind it.
+func (f fileSource) Key() string { return "files:" + f.root }
+
 func (f fileSource) Candidates() ([]Candidate, error) {
 	paths, err := f.list(f.root)
 	if err != nil {
@@ -87,6 +97,10 @@ func Lines(lines []string) Source {
 }
 
 func (l lineSource) Title() string { return "Lines in buffer" }
+
+// Key is empty: buffer lines change with every edit and cost nothing to rebuild
+// (no subprocess), so caching them would only risk showing stale text.
+func (l lineSource) Key() string { return "" }
 
 func (l lineSource) Candidates() ([]Candidate, error) {
 	out := make([]Candidate, 0, len(l.lines))
@@ -150,7 +164,7 @@ func listFd(root string) ([]string, error) {
 
 // runLister runs name inside root and reads root-relative paths from its stdout.
 func runLister(root, name string, args ...string) ([]string, error) {
-	if _, err := exec.LookPath(name); err != nil {
+	if _, err := lookTool(name); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), listTimeout)
@@ -178,6 +192,28 @@ func ParseListerOutput(out string) []string {
 		}
 	}
 	return paths
+}
+
+// toolLookup memoizes exec.LookPath per tool name.
+//
+// The probe is not cheap — measured at ~32 ms on Windows, and it is paid on every
+// picker open for a tool that is not installed. Whether a binary is on PATH does
+// not change over an editor session, so resolve it once.
+var toolLookup sync.Map // name -> lookupResult
+
+type lookupResult struct {
+	path string
+	err  error
+}
+
+func lookTool(name string) (string, error) {
+	if v, ok := toolLookup.Load(name); ok {
+		r := v.(lookupResult)
+		return r.path, r.err
+	}
+	path, err := exec.LookPath(name)
+	toolLookup.Store(name, lookupResult{path: path, err: err})
+	return path, err
 }
 
 // normalizePath trims a lister's output line into a clean relative slash path.

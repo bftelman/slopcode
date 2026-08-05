@@ -77,7 +77,6 @@ func DrawFindBar(s tcell.Screen, fb FindBar) {
 		cursorX = width - 1
 	}
 	s.ShowCursor(cursorX, y)
-	s.Show()
 }
 
 func max0(n int) int {

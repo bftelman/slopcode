@@ -563,6 +563,67 @@ restores the original cursor; `Ctrl+R` replaces one occurrence and bumps
 a file through the picker sends `CloseDoc` for the old URI and `Open` for the
 new one; and normal editing keys are unchanged when neither prompt is open.
 
+## Rendering performance (found after the first working version)
+
+Three measured problems surfaced once the feature was usable. All predate this
+work except the third, and all are now fixed with tests guarding them.
+
+**One flush per frame.** Every `Draw*` function ended with `s.Show()`. With an
+overlay open a single repaint therefore flushed twice: `Draw` repaints the text
+area over where the overlay was and flushed *that*, then the overlay was drawn
+and flushed again. The result was a visible full-frame flicker on every keystroke,
+worst for the largest overlay — which is how it was noticed, on the picker. Fixed
+by removing `Show` from every drawer and adding `render.Flush`, called once by the
+editor after composing the frame.
+
+**Syntax highlighting was recomputed every repaint.** `Draw` called
+`highlight.Highlight` on the whole document each frame, including for cursor
+movement that cannot change the text:
+
+| Document | Chroma cost per frame |
+| --- | --- |
+| 385 lines / 9 KB | 40 ms |
+| 1925 lines / 49 KB | 175 ms |
+| 7700 lines / 199 KB | 1030 ms |
+
+End-to-end cost of one cursor-movement keystroke, before and after adding
+`highlight.Cache`:
+
+| Document | Before | After |
+| --- | --- | --- |
+| 500 lines | 171 ms | 2.6 ms |
+| 2000 lines | 513 ms | 2.1 ms |
+| 8000 lines | 2259 ms | 2.9 ms |
+
+The cache holds one entry and keys on the text itself rather than a version
+counter, so it cannot serve stale styling if some future edit path forgets to
+bump a version.
+
+**Picker opens paid subprocess cost synchronously.** Measured on Windows:
+
+| Step | Cost |
+| --- | --- |
+| `exec.LookPath` for a missing tool | ~30 ms |
+| bare process spawn | ~30-60 ms |
+| `fd` listing this repo | 87-153 ms |
+| directory walk of this repo | 3 ms |
+| `DefaultLister` total | 198 ms |
+
+Three fixes: memoize `exec.LookPath` (PATH does not change over a session, and
+probing a missing tool every open is pure waste — this alone took
+`DefaultLister` from 198 ms to 74 ms); load candidates in a goroutine so the
+engine loop keeps serving keystrokes and the overlay appears immediately with a
+`Loading` marker; and cache the listed candidates by `Source.Key`, so reopening
+serves instantly while a refresh runs behind it. A failed refresh keeps the
+cached data rather than replacing it with an error. `Source.Key` returning `""`
+opts out of caching, which is right for buffer lines — they change with every
+edit and need no subprocess.
+
+The directory walk being 50x faster than `fd` on a small repo is noted but not
+acted on: the external tools respect `.gitignore`, which the walk cannot, and
+that correctness is worth more than latency now that the latency is hidden behind
+async loading and caching.
+
 ## Suggested implementation phasing
 
 1. `internal/textsearch`: `FindAll`, smart case, `foldASCII`, `NextFrom`/

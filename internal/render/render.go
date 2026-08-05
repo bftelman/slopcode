@@ -17,6 +17,18 @@ import (
 	"github.com/bftelman/slopcode/internal/textsearch"
 )
 
+// Flush pushes the composed frame to the terminal. It is the single flush point:
+// none of the Draw* functions call Show themselves.
+//
+// That matters because a frame is composed from several of them in sequence — the
+// base frame, then the sidebar, find bar, completion popup, or picker on top. If
+// each one flushed, every repaint would put an intermediate frame on screen: Draw
+// repaints the text area over where an overlay was, so flushing there shows the
+// editor *without* the overlay, and the next flush paints it back. The result is
+// a visible full-frame flicker on every keystroke, worst for the largest overlay.
+// Compose everything, then Flush once.
+func Flush(s tcell.Screen) { s.Show() }
+
 // TabWidth is the number of columns a tab stop spans.
 const TabWidth = 4
 
@@ -89,6 +101,12 @@ type Frame struct {
 	Matches []textsearch.Match
 	// Current indexes Matches; that one match is drawn as the active one.
 	Current int
+
+	// Hl memoizes syntax highlighting across repaints. Callers that redraw
+	// frequently should supply one — without it every repaint re-tokenizes the
+	// whole document, which is the dominant cost of a frame. Nil is valid and
+	// simply highlights afresh each time.
+	Hl *highlight.Cache
 }
 
 // Draw renders the editor into columns [OriginX, width) and positions the
@@ -129,7 +147,8 @@ func Draw(s tcell.Screen, f Frame) {
 	// Text area with syntax highlighting and tab expansion.
 	gw := GutterWidth(b.LineCount())
 	numStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
-	styled := highlight.Highlight(strings.Join(b.Lines(), "\n"), f.Filename, StyleName)
+	text := strings.Join(b.Lines(), "\n")
+	styled := highlightOr(f.Hl, text, f.Filename)
 	textRows := height - 1 - f.BottomRows
 	if textRows < 1 {
 		textRows = 1
@@ -183,7 +202,16 @@ func Draw(s tcell.Screen, f Frame) {
 	} else {
 		s.HideCursor()
 	}
-	s.Show()
+}
+
+// highlightOr highlights through c, or directly when c is nil. A nil cache is a
+// valid no-cache mode, so callers that repaint rarely (notably tests) need not
+// construct one.
+func highlightOr(c *highlight.Cache, text, filename string) [][]highlight.StyledRune {
+	if c == nil {
+		return highlight.Highlight(text, filename, StyleName)
+	}
+	return c.Highlight(text, filename, StyleName)
 }
 
 // rowSpan returns the matches that fall on row, plus the index of the first of
@@ -272,7 +300,6 @@ func DrawSidebar(s tcell.Screen, br *filebrowser.Browser) {
 		}
 		drawText(s, 0, y, clipPad(" "+label, sep), st)
 	}
-	s.Show()
 }
 
 var splashArt = []string{
@@ -332,7 +359,6 @@ func DrawSplash(s tcell.Screen, filename, notice string) {
 	drawText(s, sx+utf8.RuneCountInString(splashPrefix), sy, splashHandle, linkStyle)
 
 	s.HideCursor()
-	s.Show()
 }
 
 // clipPad truncates or right-pads text to exactly width columns.
