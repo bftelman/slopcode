@@ -51,7 +51,7 @@ func TestDrawHighlightsKeyword(t *testing.T) {
 	defer s.Fini()
 	b := buffer.New([]string{"func main() {}"})
 
-	Draw(s, b, "t.go", "", false, 0, 0, true)
+	Draw(s, Frame{Buf: b, Filename: "t.go", ShowCursor: true})
 
 	cells, width, _ := s.GetContents()
 	gw := GutterWidth(b.LineCount())
@@ -74,7 +74,7 @@ func TestDrawExpandsTab(t *testing.T) {
 	defer s.Fini()
 	b := buffer.New([]string{"\tx"})
 
-	Draw(s, b, "t.txt", "", false, 0, 0, true)
+	Draw(s, Frame{Buf: b, Filename: "t.txt", ShowCursor: true})
 
 	cells, width, _ := s.GetContents()
 	gw := GutterWidth(b.LineCount())
@@ -95,7 +95,7 @@ func TestDrawShowsNotice(t *testing.T) {
 	defer s.Fini()
 	b := buffer.New([]string{"hi"})
 
-	Draw(s, b, "t.txt", "t.txt saved", false, 0, 0, true)
+	Draw(s, Frame{Buf: b, Filename: "t.txt", Notice: "t.txt saved", ShowCursor: true})
 
 	cells, width, _ := s.GetContents()
 	var row0 []rune
@@ -127,8 +127,8 @@ func TestDrawClearsStaleTrailingText(t *testing.T) {
 	s := newSimScreen(t, 80, 24)
 	defer s.Fini()
 
-	Draw(s, buffer.New([]string{"hello"}), "t.txt", "", false, 0, 0, true)
-	Draw(s, buffer.New([]string{"hi"}), "t.txt", "", false, 0, 0, true)
+	Draw(s, Frame{Buf: buffer.New([]string{"hello"}), Filename: "t.txt", ShowCursor: true})
+	Draw(s, Frame{Buf: buffer.New([]string{"hi"}), Filename: "t.txt", ShowCursor: true})
 
 	cells, width, _ := s.GetContents()
 	gw := GutterWidth(1)

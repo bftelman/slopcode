@@ -287,12 +287,20 @@ func (e *Editor) draw() {
 	} else if row >= e.scroll+textRows {
 		e.scroll = row - textRows + 1
 	}
-	modified := e.isModified()
+	f := render.Frame{
+		Buf:        e.b,
+		Filename:   e.displayName(),
+		Notice:     e.notice,
+		Modified:   e.isModified(),
+		Scroll:     e.scroll,
+		ShowCursor: true,
+	}
 	if e.browser != nil {
-		render.Draw(e.s, e.b, e.displayName(), e.notice, modified, e.scroll, render.SidebarWidth, false)
+		f.OriginX, f.ShowCursor = render.SidebarWidth, false
+		render.Draw(e.s, f)
 		render.DrawSidebar(e.s, e.browser)
 	} else {
-		render.Draw(e.s, e.b, e.displayName(), e.notice, modified, e.scroll, 0, true)
+		render.Draw(e.s, f)
 	}
 	if e.popup != nil {
 		render.DrawCompletion(e.s, *e.popup)

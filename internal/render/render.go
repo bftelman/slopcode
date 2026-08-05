@@ -4,6 +4,7 @@ package render
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -13,6 +14,7 @@ import (
 	"github.com/bftelman/slopcode/internal/buffer"
 	"github.com/bftelman/slopcode/internal/filebrowser"
 	"github.com/bftelman/slopcode/internal/highlight"
+	"github.com/bftelman/slopcode/internal/textsearch"
 )
 
 // TabWidth is the number of columns a tab stop spans.
@@ -66,91 +68,161 @@ func drawText(s tcell.Screen, x, y int, text string, style tcell.Style) {
 	}
 }
 
-// Draw renders the editor into columns [originX, width) and positions the cursor.
-// When showCursor is false (e.g. while browsing) the cursor is hidden.
-func Draw(s tcell.Screen, b *buffer.Buffer, filename, notice string, modified bool, scroll, originX int, showCursor bool) {
+// Frame is everything Draw needs for one repaint. It replaces what used to be a
+// long positional parameter list; match highlighting and the reserved bottom row
+// would have pushed it to ten arguments.
+type Frame struct {
+	Buf        *buffer.Buffer
+	Filename   string
+	Notice     string
+	Modified   bool
+	Scroll     int
+	OriginX    int
+	ShowCursor bool
+
+	// BottomRows is how many rows at the bottom of the screen are reserved for
+	// another surface (the find bar), and so excluded from the text area.
+	BottomRows int
+
+	// Matches are highlighted in the text. Must be in document order, as
+	// textsearch.FindAll returns them. Nil when not searching.
+	Matches []textsearch.Match
+	// Current indexes Matches; that one match is drawn as the active one.
+	Current int
+}
+
+// Draw renders the editor into columns [OriginX, width) and positions the
+// cursor. When ShowCursor is false (e.g. while browsing) the cursor is hidden.
+func Draw(s tcell.Screen, f Frame) {
 	// No s.Clear(): we repaint every cell in the editor region explicitly, so
 	// tcell's cell diff only flushes what actually changed (avoids flicker).
+	b := f.Buf
 	width, height := s.Size()
-	editorWidth := width - originX
+	editorWidth := width - f.OriginX
 
 	// Statusbar (row 0, inverted) across the editor region.
 	bar := tcell.StyleDefault.Reverse(true)
-	for x := originX; x < width; x++ {
+	for x := f.OriginX; x < width; x++ {
 		s.SetContent(x, 0, ' ', nil, bar)
 	}
-	left := fmt.Sprintf(" %s — %d lines", filename, b.LineCount())
-	drawText(s, originX, 0, clip(left, editorWidth), bar)
+	left := fmt.Sprintf(" %s — %d lines", f.Filename, b.LineCount())
+	drawText(s, f.OriginX, 0, clip(left, editorWidth), bar)
 
 	row, col := b.Cursor()
 	right := fmt.Sprintf("Ln %d, Col %d", row+1, col+1)
-	if modified {
+	if f.Modified {
 		right += "  [modified]"
 	}
 	right += " "
 	rightStart := width - len(right)
-	if rightStart > originX {
+	if rightStart > f.OriginX {
 		drawText(s, rightStart, 0, right, bar)
 	}
-	if notice != "" {
+	if f.Notice != "" {
 		noticeStyle := bar.Foreground(tcell.ColorGreen)
-		nx := rightStart - len(notice) - 2
-		if nx > originX+len(left) {
-			drawText(s, nx, 0, notice, noticeStyle)
+		nx := rightStart - len(f.Notice) - 2
+		if nx > f.OriginX+len(left) {
+			drawText(s, nx, 0, f.Notice, noticeStyle)
 		}
 	}
 
 	// Text area with syntax highlighting and tab expansion.
 	gw := GutterWidth(b.LineCount())
 	numStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
-	styled := highlight.Highlight(strings.Join(b.Lines(), "\n"), filename, StyleName)
-	textRows := height - 1
+	styled := highlight.Highlight(strings.Join(b.Lines(), "\n"), f.Filename, StyleName)
+	textRows := height - 1 - f.BottomRows
+	if textRows < 1 {
+		textRows = 1
+	}
 	for i := 0; i < textRows; i++ {
 		y := i + 1
 		// Blank the whole editor region for this row first, so shrinking lines
 		// and rows past the end of the buffer don't leave stale content.
-		for x := originX; x < width; x++ {
+		for x := f.OriginX; x < width; x++ {
 			s.SetContent(x, y, ' ', nil, tcell.StyleDefault)
 		}
-		lineIdx := scroll + i
+		lineIdx := f.Scroll + i
 		if lineIdx >= len(styled) {
 			continue
 		}
 		num := strconv.Itoa(lineIdx + 1)
-		drawText(s, originX+gw-2-len(num), y, num, numStyle)
-		s.SetContent(originX+gw-1, y, '│', nil, numStyle)
+		drawText(s, f.OriginX+gw-2-len(num), y, num, numStyle)
+		s.SetContent(f.OriginX+gw-1, y, '│', nil, numStyle)
 
-		x := 0
+		rowMs, first := rowSpan(f.Matches, lineIdx)
+		x, byteOff := 0, 0
 		for _, sr := range styled[lineIdx] {
-			if originX+gw+x >= width {
+			if f.OriginX+gw+x >= width {
 				break
 			}
+			st := emphasize(sr.Style, rowMs, first, f.Current, byteOff)
 			if sr.R == '\t' {
 				stop := TabWidth - (x % TabWidth)
-				for k := 0; k < stop && originX+gw+x < width; k++ {
-					s.SetContent(originX+gw+x, y, ' ', nil, tcell.StyleDefault)
+				for k := 0; k < stop && f.OriginX+gw+x < width; k++ {
+					s.SetContent(f.OriginX+gw+x, y, ' ', nil, st)
 					x++
 				}
+				byteOff++
 				continue
 			}
-			s.SetContent(originX+gw+x, y, sr.R, nil, sr.Style)
+			s.SetContent(f.OriginX+gw+x, y, sr.R, nil, st)
 			x++
+			byteOff += utf8.RuneLen(sr.R)
 		}
 	}
 
 	// Cursor position on screen (tab-aware).
 	lines := b.Lines()
-	cy := row - scroll + 1
-	cx := originX + gw
+	cy := row - f.Scroll + 1
+	cx := f.OriginX + gw
 	if row >= 0 && row < len(lines) {
-		cx = originX + gw + screenCol(lines[row], col, TabWidth)
+		cx = f.OriginX + gw + screenCol(lines[row], col, TabWidth)
 	}
-	if showCursor && cy >= 1 && cy < height {
+	if f.ShowCursor && cy >= 1 && cy <= textRows {
 		s.ShowCursor(cx, cy)
 	} else {
 		s.HideCursor()
 	}
 	s.Show()
+}
+
+// rowSpan returns the matches that fall on row, plus the index of the first of
+// them in ms. ms must be in document order.
+func rowSpan(ms []textsearch.Match, row int) ([]textsearch.Match, int) {
+	if len(ms) == 0 {
+		return nil, 0
+	}
+	lo := sort.Search(len(ms), func(i int) bool { return ms[i].Row >= row })
+	hi := lo
+	for hi < len(ms) && ms[hi].Row == row {
+		hi++
+	}
+	return ms[lo:hi], lo
+}
+
+// emphasize overlays search-match emphasis onto base for the byte at off.
+//
+// It uses attributes rather than colors on purpose: per the theming invariant in
+// AGENTS.md, this package must not hardcode colors, and Reverse/Underline
+// compose with whatever foreground the active chroma theme gave the glyph.
+func emphasize(base tcell.Style, rowMs []textsearch.Match, first, current, off int) tcell.Style {
+	inMatch, isCurrent := false, false
+	for j, m := range rowMs {
+		if off >= m.Col && off < m.Col+m.Len {
+			inMatch = true
+			if first+j == current {
+				isCurrent = true
+			}
+		}
+	}
+	switch {
+	case isCurrent:
+		return base.Reverse(true)
+	case inMatch:
+		return base.Underline(true).Bold(true)
+	default:
+		return base
+	}
 }
 
 // DrawSidebar renders the file browser into columns [0, SidebarWidth).
