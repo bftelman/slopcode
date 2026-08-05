@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -21,12 +22,45 @@ func resolveCmd(cmd string) string {
 		if dir == "" {
 			continue
 		}
-		candidate := filepath.Join(dir, cmd)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate
+		for _, name := range execNames(cmd) {
+			candidate := filepath.Join(dir, name)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate
+			}
 		}
 	}
 	return cmd
+}
+
+// execNames returns the filenames to look for when resolving cmd inside a tool
+// directory, most likely first.
+//
+// On Windows this matters: a file is only executable if it carries one of
+// PATHEXT's extensions, and `go install` writes "gopls.exe" — so stat-ing a bare
+// "gopls" finds nothing, which silently disabled this entire fallback on the one
+// platform it was most needed. Extensions are lowercased because that is what
+// `go install` writes, and Windows filenames are case-insensitive anyway, so a
+// lowercase probe still matches an upper-case name on disk.
+func execNames(cmd string) []string {
+	if runtime.GOOS != "windows" || filepath.Ext(cmd) != "" {
+		return []string{cmd}
+	}
+	exts := os.Getenv("PATHEXT")
+	if exts == "" {
+		exts = ".com;.exe;.bat;.cmd"
+	}
+	var names []string
+	for _, ext := range strings.Split(exts, ";") {
+		ext = strings.ToLower(strings.TrimSpace(ext))
+		if ext == "" {
+			continue
+		}
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+		names = append(names, cmd+ext)
+	}
+	return names
 }
 
 // goToolDirs lists directories `go install` may have placed tools in, most
