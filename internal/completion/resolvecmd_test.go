@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -18,8 +19,18 @@ func goDir(t *testing.T) string {
 	return filepath.Dir(p)
 }
 
+// writeStub creates an executable stub for the tool named name and returns the
+// path resolveCmd should produce for it.
+//
+// The ".exe" on Windows is not cosmetic: a file without one of PATHEXT's
+// extensions is not executable there, so exec.LookPath would never find it and
+// an extensionless stub would be testing a scenario that cannot occur. Real
+// `go install` writes "gopls.exe", and these tests have to match that.
 func writeStub(t *testing.T, dir, name string) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatalf("write stub: %v", err)
