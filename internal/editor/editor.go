@@ -27,6 +27,8 @@ type Editor struct {
 	pendingOpen string               // unsaved-changes guard latch
 	splashShown bool                 // true when the last frame was the splash screen
 
+	find *findState // non-nil while the find/replace bar is open
+
 	eng        *completion.Engine
 	docVersion int
 	reqPos     completion.Position // cursor position the outstanding request was issued at
@@ -93,7 +95,14 @@ func (e *Editor) Run() {
 }
 
 // handleKey applies one key event. It returns true when the editor should quit.
+//
+// Precedence: the find bar and the browser are modal surfaces that consume keys
+// wholesale; the completion popup only intercepts the few keys it reinterprets
+// and otherwise falls through to normal editing.
 func (e *Editor) handleKey(ev *tcell.EventKey) bool {
+	if e.find != nil {
+		return e.handleFindKey(ev)
+	}
 	if e.browser != nil {
 		return e.handleBrowseKey(ev)
 	}
@@ -106,6 +115,8 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 	switch ev.Key() {
 	case tcell.KeyCtrlQ:
 		return e.tryQuit()
+	case tcell.KeyCtrlF:
+		e.openFind()
 	case tcell.KeyCtrlB:
 		e.openBrowser()
 	case tcell.KeyCtrlS:
@@ -277,7 +288,11 @@ func (e *Editor) draw() {
 		return
 	}
 	_, height := e.s.Size()
-	textRows := height - 1
+	bottomRows := 0
+	if e.find != nil {
+		bottomRows = render.FindBarRows
+	}
+	textRows := height - 1 - bottomRows
 	if textRows < 1 {
 		textRows = 1
 	}
@@ -294,6 +309,13 @@ func (e *Editor) draw() {
 		Modified:   e.isModified(),
 		Scroll:     e.scroll,
 		ShowCursor: true,
+		BottomRows: bottomRows,
+	}
+	if e.find != nil {
+		// The find bar draws its own cursor in the focused field, and there is
+		// only one terminal cursor to go around.
+		f.ShowCursor = false
+		f.Matches, f.Current = e.find.matches, e.find.cur
 	}
 	if e.browser != nil {
 		f.OriginX, f.ShowCursor = render.SidebarWidth, false
@@ -301,6 +323,9 @@ func (e *Editor) draw() {
 		render.DrawSidebar(e.s, e.browser)
 	} else {
 		render.Draw(e.s, f)
+	}
+	if e.find != nil {
+		render.DrawFindBar(e.s, e.find.findBar())
 	}
 	if e.popup != nil {
 		render.DrawCompletion(e.s, *e.popup)

@@ -67,6 +67,22 @@ func NearestFrom(ms []Match, row, col int) int {
 	return wrapFirst(ms)
 }
 
+// NearestForward returns the index of the first match at or after (row, col),
+// or -1 when there is none. Unlike NearestFrom it does **not** wrap.
+//
+// This is what a replace sweep advances with. Wrapping there would be a trap: a
+// replacement that contains the query ("foo" -> "foofoo") would wrap the
+// selection back onto the text just inserted, so holding the replace key would
+// grow the line without ever terminating.
+func NearestForward(ms []Match, row, col int) int {
+	for i, m := range ms {
+		if m.Row > row || (m.Row == row && m.Col >= col) {
+			return i
+		}
+	}
+	return -1
+}
+
 // NextFrom returns the index of the first match strictly after (row, col),
 // wrapping to 0. Unlike NearestFrom it always advances, which is what Ctrl+N
 // needs. Returns -1 when ms is empty.

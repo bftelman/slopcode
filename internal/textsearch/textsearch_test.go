@@ -77,9 +77,32 @@ func TestNonASCIICaseIsSensitive(t *testing.T) {
 	}
 }
 
+// NearestForward must not wrap - that is what stops a replace sweep from
+// selecting its own output and looping forever.
+func TestNearestForwardDoesNotWrap(t *testing.T) {
+	ms := FindAll([]string{"foo bar foo"}, "foo")
+	if got := NearestForward(ms, 0, 0); got != 0 {
+		t.Errorf("at (0,0): got %d, want 0", got)
+	}
+	if got := NearestForward(ms, 0, 8); got != 1 {
+		t.Errorf("at (0,8): got %d, want 1", got)
+	}
+	if got := NearestForward(ms, 0, 9); got != -1 {
+		t.Errorf("past the last match: got %d, want -1 (no wrap)", got)
+	}
+	if got := NearestForward(nil, 0, 0); got != -1 {
+		t.Errorf("empty: got %d, want -1", got)
+	}
+	// The contrast with NearestFrom, which does wrap.
+	if got := NearestFrom(ms, 0, 9); got != 0 {
+		t.Errorf("NearestFrom past the last match: got %d, want 0 (wraps)", got)
+	}
+}
+
 func TestSteppingEmpty(t *testing.T) {
 	for name, fn := range map[string]func([]Match, int, int) int{
 		"NearestFrom": NearestFrom, "NextFrom": NextFrom, "PrevFrom": PrevFrom,
+		"NearestForward": NearestForward,
 	} {
 		if got := fn(nil, 0, 0); got != -1 {
 			t.Errorf("%s on empty: got %d, want -1", name, got)
