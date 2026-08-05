@@ -180,6 +180,48 @@ func (b *Buffer) InsertTab(width int) {
 	}
 }
 
+// ReplaceRange replaces the byte span [col, col+length) on row with text and
+// leaves the cursor immediately after the inserted text. An out-of-range row is
+// ignored; col and length are clamped to the line.
+//
+// It deliberately takes no checkpoint, so the caller chooses undo granularity:
+// the editor wraps a whole replace-all sweep in one Checkpoint, making it a
+// single undo step, while a one-off replacement gets its own.
+func (b *Buffer) ReplaceRange(row, col, length int, text string) {
+	if row < 0 || row >= len(b.lines) {
+		return
+	}
+	line := b.lines[row]
+	if col < 0 {
+		col = 0
+	}
+	if col > len(line) {
+		col = len(line)
+	}
+	if length < 0 {
+		length = 0
+	}
+	if col+length > len(line) {
+		length = len(line) - col
+	}
+	b.lines[row] = line[:col] + text + line[col+length:]
+	b.row = row
+	b.col = col + len(text)
+}
+
+// SetCursor moves the cursor to (row, col), clamped to the buffer's bounds.
+func (b *Buffer) SetCursor(row, col int) {
+	if row < 0 {
+		row = 0
+	}
+	if row >= len(b.lines) {
+		row = len(b.lines) - 1
+	}
+	b.row = row
+	b.col = col
+	b.clampCol()
+}
+
 // Backspace deletes the character before the cursor, joining lines at column 0.
 func (b *Buffer) Backspace() {
 	if b.col > 0 {
