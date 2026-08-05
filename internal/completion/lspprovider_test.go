@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/bftelman/slopcode/internal/lsp"
+	"github.com/bftelman/namlet/internal/lsp"
 )
 
 type fakeConn struct {
@@ -27,7 +27,7 @@ func TestPathToFileURI(t *testing.T) {
 		path string
 		want string
 	}{
-		{"unix absolute", "/mnt/second_drive/src/slopcode/test_lsp.go", "file:///mnt/second_drive/src/slopcode/test_lsp.go"},
+		{"unix absolute", "/mnt/second_drive/src/namlet/test_lsp.go", "file:///mnt/second_drive/src/namlet/test_lsp.go"},
 		{"unix root", "/", "file:///"},
 		// filepath.ToSlash only rewrites '\' on GOOS=windows (it's a no-op
 		// elsewhere), so a drive path is given already slash-form here to

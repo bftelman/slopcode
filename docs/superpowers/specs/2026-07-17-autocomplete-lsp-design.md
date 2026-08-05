@@ -5,7 +5,7 @@ Status: Design approved; iterating on integration detail (rev. 2).
 
 ## Goal
 
-Add code autocompletion to slopcode through an **extensible engine** that
+Add code autocompletion to namlet through an **extensible engine** that
 accepts pluggable completion providers. The first-class provider connects to
 **Language Server Protocol (LSP)** servers. The MVP targets Go via `gopls`;
 completion server selection is driven by file type so more languages are added

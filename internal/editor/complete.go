@@ -7,8 +7,8 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/completion"
-	"github.com/bftelman/slopcode/internal/render"
+	"github.com/bftelman/namlet/internal/completion"
+	"github.com/bftelman/namlet/internal/render"
 )
 
 // completionEvent carries an engine Result into the tcell event loop.

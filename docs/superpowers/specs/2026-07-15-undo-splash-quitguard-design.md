@@ -1,7 +1,7 @@
-# slopcode — Undo/Redo, Splash Screen, Quit Guard Design
+# namlet — Undo/Redo, Splash Screen, Quit Guard Design
 
 **Date:** 2026-07-15
-**Module:** `github.com/bftelman/slopcode`
+**Module:** `github.com/bftelman/namlet`
 **Builds on:** prior specs in this folder.
 
 ## Overview
@@ -10,7 +10,7 @@ Three finishing features:
 
 1. **Undo/redo** — per-change snapshots, Ctrl+Z / Ctrl+Y.
 2. **Splash screen** — launched with no filename, show an ASCII banner
-   ("SLOPCODE" + "by @bftelman") until the first keystroke.
+   ("NAMLET" + "by @bftelman") until the first keystroke.
 3. **Unsaved-changes handling** — the `[modified]` marker shows whenever there are unsaved
    changes (already implemented); Ctrl+Q hard-blocks while modified; an unnamed buffer saves
    to `untitled.txt`.

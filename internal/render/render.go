@@ -11,10 +11,10 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
-	"github.com/bftelman/slopcode/internal/filebrowser"
-	"github.com/bftelman/slopcode/internal/highlight"
-	"github.com/bftelman/slopcode/internal/textsearch"
+	"github.com/bftelman/namlet/internal/buffer"
+	"github.com/bftelman/namlet/internal/filebrowser"
+	"github.com/bftelman/namlet/internal/highlight"
+	"github.com/bftelman/namlet/internal/textsearch"
 )
 
 // Flush pushes the composed frame to the terminal. It is the single flush point:
@@ -303,11 +303,11 @@ func DrawSidebar(s tcell.Screen, br *filebrowser.Browser) {
 }
 
 var splashArt = []string{
-	"█████ █     █████ █████ █████ █████ ████  █████",
-	"█     █     █   █ █   █ █     █   █ █   █ █    ",
-	"█████ █     █   █ █████ █     █   █ █   █ █████",
-	"    █ █     █   █ █     █     █   █ █   █ █    ",
-	"█████ █████ █████ █     █████ █████ ████  █████",
+	"█   █ █████ █   █ █     █████ █████",
+	"██  █ █   █ ██ ██ █     █       █  ",
+	"█ █ █ █████ █ █ █ █     █████   █  ",
+	"█  ██ █   █ █   █ █     █       █  ",
+	"█   █ █   █ █   █ █████ █████   █  ",
 }
 
 const (

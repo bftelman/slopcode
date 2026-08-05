@@ -1,7 +1,7 @@
-# slopcode — Auto-pairs & File Browser Design
+# namlet — Auto-pairs & File Browser Design
 
 **Date:** 2026-07-15
-**Module:** `github.com/bftelman/slopcode`
+**Module:** `github.com/bftelman/namlet`
 **Builds on:** the MVP and enhancements specs (same folder).
 
 ## Overview

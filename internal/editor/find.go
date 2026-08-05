@@ -5,8 +5,8 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/render"
-	"github.com/bftelman/slopcode/internal/textsearch"
+	"github.com/bftelman/namlet/internal/render"
+	"github.com/bftelman/namlet/internal/textsearch"
 )
 
 // findState is the find/replace prompt. It is nil when the bar is closed.

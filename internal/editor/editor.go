@@ -7,14 +7,14 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/autopair"
-	"github.com/bftelman/slopcode/internal/buffer"
-	"github.com/bftelman/slopcode/internal/completion"
-	"github.com/bftelman/slopcode/internal/filebrowser"
-	"github.com/bftelman/slopcode/internal/fileio"
-	"github.com/bftelman/slopcode/internal/highlight"
-	"github.com/bftelman/slopcode/internal/picker"
-	"github.com/bftelman/slopcode/internal/render"
+	"github.com/bftelman/namlet/internal/autopair"
+	"github.com/bftelman/namlet/internal/buffer"
+	"github.com/bftelman/namlet/internal/completion"
+	"github.com/bftelman/namlet/internal/filebrowser"
+	"github.com/bftelman/namlet/internal/fileio"
+	"github.com/bftelman/namlet/internal/highlight"
+	"github.com/bftelman/namlet/internal/picker"
+	"github.com/bftelman/namlet/internal/render"
 )
 
 // Editor owns the screen, buffer, and view state for one file.

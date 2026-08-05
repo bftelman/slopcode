@@ -507,7 +507,7 @@ func (e *Editor) draw() {
 ```go
 func main() {
 	if len(os.Args) > 2 {
-		fmt.Fprintln(os.Stderr, "usage: slopcode [filename]")
+		fmt.Fprintln(os.Stderr, "usage: namlet [filename]")
 		os.Exit(2)
 	}
 	path := ""
@@ -541,7 +541,7 @@ func main() {
 }
 ```
 
-- [ ] **Step 2: Verify** — `go build ./... && ./slopcode a b c; echo $?` (expect usage + exit 2); `go vet ./...`.
+- [ ] **Step 2: Verify** — `go build ./... && ./namlet a b c; echo $?` (expect usage + exit 2); `go vet ./...`.
 
 - [ ] **Step 3: Commit** — `git add main.go && git commit -m "feat: launch with no filename (splash mode)"`
 
@@ -550,7 +550,7 @@ func main() {
 ### Task 5: Full verification
 
 - [ ] **Step 1:** `go build ./... && go test ./... && go vet ./...` — all clean.
-- [ ] **Step 2: Manual smoke** — `go run .` (no arg): SLOPCODE banner shows; typing replaces
+- [ ] **Step 2: Manual smoke** — `go run .` (no arg): NAMLET banner shows; typing replaces
   it with the buffer and `[No Name]` + `[modified]` appear; Ctrl+Z/Ctrl+Y undo/redo;
   Ctrl+Q is blocked with a notice; Ctrl+S writes `untitled.txt`; Ctrl+Q then quits.
 - [ ] **Step 3:** Commit any leftovers.

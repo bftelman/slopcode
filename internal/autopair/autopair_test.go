@@ -3,7 +3,7 @@ package autopair
 import (
 	"testing"
 
-	"github.com/bftelman/slopcode/internal/buffer"
+	"github.com/bftelman/namlet/internal/buffer"
 )
 
 func lineCol(b *buffer.Buffer) (string, int) {

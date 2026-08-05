@@ -1,4 +1,4 @@
-module github.com/bftelman/slopcode
+module github.com/bftelman/namlet
 
 go 1.25.4
 

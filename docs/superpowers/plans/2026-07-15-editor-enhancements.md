@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a save notification, soft tabs, and chroma-based syntax highlighting to the slopcode editor.
+**Goal:** Add a save notification, soft tabs, and chroma-based syntax highlighting to the namlet editor.
 
 **Architecture:** Keep `buffer`/`fileio` pure. Add `internal/highlight` (chroma → tcell styles). Extend `render` to draw styled runes with tab expansion and a notice; extend `editor` with Tab→spaces and a clear-on-keypress notice.
 
@@ -456,8 +456,8 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
-	"github.com/bftelman/slopcode/internal/highlight"
+	"github.com/bftelman/namlet/internal/buffer"
+	"github.com/bftelman/namlet/internal/highlight"
 )
 ```
 

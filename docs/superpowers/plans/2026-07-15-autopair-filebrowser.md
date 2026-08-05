@@ -92,7 +92,7 @@ package autopair
 import (
 	"testing"
 
-	"github.com/bftelman/slopcode/internal/buffer"
+	"github.com/bftelman/namlet/internal/buffer"
 )
 
 func lineCol(b *buffer.Buffer) (string, int) {
@@ -164,7 +164,7 @@ func TestInsertPlainRune(t *testing.T) {
 // Package autopair adds bracket/quote auto-completion on top of a buffer.
 package autopair
 
-import "github.com/bftelman/slopcode/internal/buffer"
+import "github.com/bftelman/namlet/internal/buffer"
 
 var openers = map[rune]rune{
 	'(': ')', '[': ']', '{': '}',
@@ -478,7 +478,7 @@ func TestDrawSidebarShowsEntries(t *testing.T) {
 }
 ```
 
-Add imports `os`, `path/filepath`, and `github.com/bftelman/slopcode/internal/filebrowser`
+Add imports `os`, `path/filepath`, and `github.com/bftelman/namlet/internal/filebrowser`
 to `render_test.go`.
 
 - [ ] **Step 3: Run — expect FAIL** (undefined DrawSidebar / signature mismatch).
@@ -681,8 +681,8 @@ func keyEvent(k tcell.Key, ch ...rune) *tcell.EventKey {
 
 - [ ] **Step 3: Implement editor.go**
 
-Add imports `path/filepath`, `github.com/bftelman/slopcode/internal/autopair`,
-`github.com/bftelman/slopcode/internal/filebrowser`. Add fields:
+Add imports `path/filepath`, `github.com/bftelman/namlet/internal/autopair`,
+`github.com/bftelman/namlet/internal/filebrowser`. Add fields:
 
 ```go
 	browser     *filebrowser.Browser

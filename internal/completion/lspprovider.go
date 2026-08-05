@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bftelman/slopcode/internal/lsp"
+	"github.com/bftelman/namlet/internal/lsp"
 )
 
 // ServerSpec describes how to launch a language server for an extension.

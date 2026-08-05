@@ -7,7 +7,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
+	"github.com/bftelman/namlet/internal/buffer"
 )
 
 // newFindEditor builds an editor over lines on a ".txt" path, so the completion

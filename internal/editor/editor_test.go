@@ -10,10 +10,10 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
-	"github.com/bftelman/slopcode/internal/completion"
-	"github.com/bftelman/slopcode/internal/fileio"
-	"github.com/bftelman/slopcode/internal/render"
+	"github.com/bftelman/namlet/internal/buffer"
+	"github.com/bftelman/namlet/internal/completion"
+	"github.com/bftelman/namlet/internal/fileio"
+	"github.com/bftelman/namlet/internal/render"
 )
 
 // TestRunTypesEditsAndSaves drives the real event loop through a simulation

@@ -1,7 +1,7 @@
 // Package autopair adds bracket/quote auto-completion on top of a buffer.
 package autopair
 
-import "github.com/bftelman/slopcode/internal/buffer"
+import "github.com/bftelman/namlet/internal/buffer"
 
 var openers = map[rune]rune{
 	'(': ')', '[': ']', '{': '}',

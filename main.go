@@ -1,4 +1,4 @@
-// Command slopcode is a minimal fullscreen terminal text editor.
+// Command namlet is a minimal fullscreen terminal text editor.
 package main
 
 import (
@@ -7,14 +7,14 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
-	"github.com/bftelman/slopcode/internal/editor"
-	"github.com/bftelman/slopcode/internal/fileio"
+	"github.com/bftelman/namlet/internal/buffer"
+	"github.com/bftelman/namlet/internal/editor"
+	"github.com/bftelman/namlet/internal/fileio"
 )
 
 func main() {
 	if len(os.Args) > 2 {
-		fmt.Fprintln(os.Stderr, "usage: slopcode [filename]")
+		fmt.Fprintln(os.Stderr, "usage: namlet [filename]")
 		os.Exit(2)
 	}
 	path := ""

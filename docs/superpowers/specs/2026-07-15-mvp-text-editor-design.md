@@ -1,7 +1,7 @@
-# slopcode — MVP Text Editor Design
+# namlet — MVP Text Editor Design
 
 **Date:** 2026-07-15
-**Module:** `github.com/bftelman/slopcode`
+**Module:** `github.com/bftelman/namlet`
 
 ## Overview
 
@@ -16,7 +16,7 @@ directly; there are no normal/insert modes and no `:` command line.
 
 ## Requirements
 
-- Launch: `slopcode <filename>` (filename is **required** for the MVP).
+- Launch: `namlet <filename>` (filename is **required** for the MVP).
 - If the file exists, load its contents; if not, start with an empty buffer.
 - The file is created on disk only on first save.
 - Edit text: insert printable characters, Enter to split lines, Backspace to delete.

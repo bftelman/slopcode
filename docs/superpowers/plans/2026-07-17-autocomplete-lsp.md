@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add automatic code completion to slopcode via an extensible, provider-based engine whose first-class provider connects to LSP servers (gopls for Go).
+**Goal:** Add automatic code completion to namlet via an extensible, provider-based engine whose first-class provider connects to LSP servers (gopls for Go).
 
 **Architecture:** A UI-free `completion` engine runs as a single owner goroutine (actor model), debounces edits, and dispatches to a `Provider`. The LSP provider wraps a minimal JSON-RPC client in a new UI-free `lsp` package. Results flow back on a channel; the editor bridges them to `tcell` via `PostEvent`. The buffer stays UI-thread-only; snapshots are handed to the engine as immutable values.
 
@@ -1177,7 +1177,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bftelman/slopcode/internal/lsp"
+	"github.com/bftelman/namlet/internal/lsp"
 )
 
 type fakeConn struct {
@@ -1227,7 +1227,7 @@ package completion
 import (
 	"context"
 
-	"github.com/bftelman/slopcode/internal/lsp"
+	"github.com/bftelman/namlet/internal/lsp"
 )
 
 // ServerSpec describes how to launch a language server for an extension.
@@ -1371,7 +1371,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/completion"
+	"github.com/bftelman/namlet/internal/completion"
 )
 
 func cellText(s tcell.SimulationScreen, x, y, n int) string {
@@ -1421,7 +1421,7 @@ package render
 import (
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/completion"
+	"github.com/bftelman/namlet/internal/completion"
 )
 
 // completionMaxRows caps the visible popup height.
@@ -1710,8 +1710,8 @@ Expected: FAIL — `undefined: NewWithEngine` / `completionEvent`.
 - [ ] **Step 3: Add engine fields and constructor to `editor.go`**
 
 ```go
-// Add imports: "github.com/bftelman/slopcode/internal/completion"
-//               "github.com/bftelman/slopcode/internal/render" (already present)
+// Add imports: "github.com/bftelman/namlet/internal/completion"
+//               "github.com/bftelman/namlet/internal/render" (already present)
 
 // Add to the Editor struct:
 //     eng        *completion.Engine
@@ -1746,10 +1746,10 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
-	"github.com/bftelman/slopcode/internal/completion"
-	"github.com/bftelman/slopcode/internal/fileio"
-	"github.com/bftelman/slopcode/internal/render"
+	"github.com/bftelman/namlet/internal/buffer"
+	"github.com/bftelman/namlet/internal/completion"
+	"github.com/bftelman/namlet/internal/fileio"
+	"github.com/bftelman/namlet/internal/render"
 )
 
 // completionEvent carries an engine Result into the tcell event loop.

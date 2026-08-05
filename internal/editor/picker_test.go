@@ -9,10 +9,10 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
-	"github.com/bftelman/slopcode/internal/completion"
-	"github.com/bftelman/slopcode/internal/fileio"
-	"github.com/bftelman/slopcode/internal/picker"
+	"github.com/bftelman/namlet/internal/buffer"
+	"github.com/bftelman/namlet/internal/completion"
+	"github.com/bftelman/namlet/internal/fileio"
+	"github.com/bftelman/namlet/internal/picker"
 )
 
 // waitPickRows pumps picker events into the editor until the overlay has rows,

@@ -6,7 +6,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
+	"github.com/bftelman/namlet/internal/buffer"
 )
 
 func benchLines(n int) []string {

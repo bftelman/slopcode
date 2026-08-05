@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Module path: `github.com/bftelman/slopcode`.
+- Module path: `github.com/bftelman/namlet`.
 - Go version: 1.25.4.
 - Not modal: typing inserts directly. Ctrl+S saves, Ctrl+Q quits.
 - Filename argument is required.
@@ -45,15 +45,15 @@
 - [ ] **Step 1: Initialize git**
 
 ```bash
-cd /c/Users/telman.babayev/source/slopcode
+cd /c/Users/telman.babayev/source/namlet
 git init
 ```
 
 - [ ] **Step 2: Create `.gitignore`**
 
 ```
-/slopcode
-/slopcode.exe
+/namlet
+/namlet.exe
 ```
 
 - [ ] **Step 3: Add tcell dependency**
@@ -589,7 +589,7 @@ import (
 	"strconv"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/bftelman/slopcode/internal/buffer"
+	"github.com/bftelman/namlet/internal/buffer"
 )
 
 // GutterWidth returns the column width reserved for line numbers + separator.
@@ -710,9 +710,9 @@ package editor
 import (
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
-	"github.com/bftelman/slopcode/internal/fileio"
-	"github.com/bftelman/slopcode/internal/render"
+	"github.com/bftelman/namlet/internal/buffer"
+	"github.com/bftelman/namlet/internal/fileio"
+	"github.com/bftelman/namlet/internal/render"
 )
 
 type Editor struct {
@@ -833,14 +833,14 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
-	"github.com/bftelman/slopcode/internal/editor"
-	"github.com/bftelman/slopcode/internal/fileio"
+	"github.com/bftelman/namlet/internal/buffer"
+	"github.com/bftelman/namlet/internal/editor"
+	"github.com/bftelman/namlet/internal/fileio"
 )
 
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: slopcode <filename>")
+		fmt.Fprintln(os.Stderr, "usage: namlet <filename>")
 		os.Exit(2)
 	}
 	path := os.Args[1]

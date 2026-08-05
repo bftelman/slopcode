@@ -4,8 +4,8 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/completion"
-	"github.com/bftelman/slopcode/internal/highlight"
+	"github.com/bftelman/namlet/internal/completion"
+	"github.com/bftelman/namlet/internal/highlight"
 )
 
 // completionMaxRows caps the visible popup height.

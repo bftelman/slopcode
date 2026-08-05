@@ -6,8 +6,8 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/buffer"
-	"github.com/bftelman/slopcode/internal/textsearch"
+	"github.com/bftelman/namlet/internal/buffer"
+	"github.com/bftelman/namlet/internal/textsearch"
 )
 
 // rowText reads a whole screen row back as a string, one rune per screen cell.

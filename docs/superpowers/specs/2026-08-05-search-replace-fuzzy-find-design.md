@@ -35,7 +35,7 @@ prompt that is either open or closed.
   toggle. Smart case covers the common need without a persistent option flag.
 - No live grep across files. The picker never searches file *contents*; only
   paths, and lines of the already-open buffer.
-- No multi-buffer picker — slopcode holds one buffer at a time, so an "open
+- No multi-buffer picker — namlet holds one buffer at a time, so an "open
   buffers" source would first require multi-buffer support.
 - No preview pane in the picker. Telescope's is iconic but needs per-selection
   file loading and a second highlighted pane; deferred.
@@ -127,7 +127,7 @@ suggestion. Telescope itself uses `rg`/`fd` as *finders* but does its fuzzy
 `fzf.vim` is the one that shells out, and it does so by handing the entire
 terminal over.
 
-- **Interactive `fzf`** needs the tty. slopcode owns the terminal through tcell,
+- **Interactive `fzf`** needs the tty. namlet owns the terminal through tcell,
   so this means `Suspend()`/`Resume()` around the child. That costs a visible
   flash on every open, makes the picker untestable through
   `tcell.SimulationScreen`, prevents sharing the chroma theme, and puts the

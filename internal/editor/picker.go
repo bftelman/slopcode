@@ -7,8 +7,8 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/picker"
-	"github.com/bftelman/slopcode/internal/render"
+	"github.com/bftelman/namlet/internal/picker"
+	"github.com/bftelman/namlet/internal/render"
 )
 
 // pickerEvent carries a ranking Result into the tcell event loop, mirroring how

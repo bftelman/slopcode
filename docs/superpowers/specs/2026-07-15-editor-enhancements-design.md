@@ -1,7 +1,7 @@
-# slopcode — Enhancements Design (notifications, soft tabs, syntax highlighting)
+# namlet — Enhancements Design (notifications, soft tabs, syntax highlighting)
 
 **Date:** 2026-07-15
-**Module:** `github.com/bftelman/slopcode`
+**Module:** `github.com/bftelman/namlet`
 **Builds on:** `2026-07-15-mvp-text-editor-design.md`
 
 ## Overview

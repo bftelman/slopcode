@@ -7,7 +7,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/picker"
+	"github.com/bftelman/namlet/internal/picker"
 )
 
 func pickerRows(texts ...string) []picker.Row {
@@ -37,7 +37,7 @@ func TestDrawPickerShowsTitleQueryAndRows(t *testing.T) {
 	defer s.Fini()
 
 	DrawPicker(s, Picker{
-		Title: "Files · slopcode",
+		Title: "Files · namlet",
 		Query: "buf",
 		Rows:  pickerRows("internal/buffer/buffer.go", "internal/buffer/buffer_test.go"),
 		Total: 2,
@@ -45,7 +45,7 @@ func TestDrawPickerShowsTitleQueryAndRows(t *testing.T) {
 	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	got := screenText(t, s)
-	for _, want := range []string{"Files · slopcode", "> buf", "internal/buffer/buffer.go"} {
+	for _, want := range []string{"Files · namlet", "> buf", "internal/buffer/buffer.go"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("overlay missing %q:\n%s", want, got)
 		}

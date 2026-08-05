@@ -7,8 +7,8 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/highlight"
-	"github.com/bftelman/slopcode/internal/picker"
+	"github.com/bftelman/namlet/internal/highlight"
+	"github.com/bftelman/namlet/internal/picker"
 )
 
 // Picker is the overlay to draw: a centered box with a query line and a ranked

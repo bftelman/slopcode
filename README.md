@@ -1,4 +1,4 @@
-# slopcode
+# namlet
 
 A fullscreen terminal text editor written in Go. It opens or creates a file, lets you
 type directly, and saves. The look is inspired by vim (fullscreen, line numbers, a status
@@ -63,8 +63,8 @@ go run .
 Build a binary:
 
 ```
-go build -o slopcode .
-./slopcode path/to/file.go
+go build -o namlet .
+./namlet path/to/file.go
 ```
 
 If the file does not exist, it is created on the first save. Starting without a filename

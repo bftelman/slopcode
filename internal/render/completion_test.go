@@ -5,7 +5,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/bftelman/slopcode/internal/completion"
+	"github.com/bftelman/namlet/internal/completion"
 )
 
 func cellText(s tcell.SimulationScreen, x, y, n int) string {
