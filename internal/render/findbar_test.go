@@ -10,7 +10,12 @@ import (
 	"github.com/bftelman/slopcode/internal/textsearch"
 )
 
-// rowText reads a whole screen row back as a string.
+// rowText reads a whole screen row back as a string, one rune per screen cell.
+//
+// An unpainted cell becomes a space rather than being skipped: overlays such as
+// the picker only paint their own box, and dropping the untouched cells would
+// desynchronize string indexes from screen columns, so a test locating text with
+// strings.Index would compute the wrong x.
 func rowText(t *testing.T, s tcell.SimulationScreen, y int) string {
 	t.Helper()
 	cells, width, _ := s.GetContents()
@@ -19,7 +24,9 @@ func rowText(t *testing.T, s tcell.SimulationScreen, y int) string {
 		c := cellAt(cells, width, x, y)
 		if len(c.Runes) > 0 {
 			sb.WriteRune(c.Runes[0])
+			continue
 		}
+		sb.WriteByte(' ')
 	}
 	return sb.String()
 }
