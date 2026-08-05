@@ -128,5 +128,4 @@ func DrawCompletion(s tcell.Screen, p Popup) {
 			}
 		}
 	}
-	s.Show()
 }

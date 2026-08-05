@@ -14,6 +14,40 @@ type StyledRune struct {
 	Style tcell.Style
 }
 
+// Cache memoizes the most recent Highlight result.
+//
+// Highlighting is expensive: chroma re-tokenizes the whole document, measured at
+// ~40 ms for a 9 KB file, ~175 ms for 49 KB, and over a second for 200 KB. Draw
+// runs on every repaint — including cursor movement, find-bar stepping, and
+// picker navigation, none of which can change the text — so recomputing it made
+// those repaints cost the full tokenization. Reusing the previous result makes
+// them free.
+//
+// It deliberately holds exactly one entry: the editor shows one document at a
+// time, so extra entries would only retain memory for documents no longer on
+// screen. Keying on the text itself rather than a version counter means the cache
+// cannot go stale if some future edit path forgets to bump a version.
+//
+// Not safe for concurrent use. Like the buffer, it is UI-thread-only.
+type Cache struct {
+	text     string
+	filename string
+	style    string
+	styled   [][]StyledRune
+	valid    bool
+}
+
+// Highlight returns the cached result when the inputs are unchanged, and
+// otherwise recomputes and stores it.
+func (c *Cache) Highlight(text, filename, styleName string) [][]StyledRune {
+	if c.valid && c.text == text && c.filename == filename && c.style == styleName {
+		return c.styled
+	}
+	c.styled = Highlight(text, filename, styleName)
+	c.text, c.filename, c.style, c.valid = text, filename, styleName, true
+	return c.styled
+}
+
 // Highlight tokenises text (language chosen by filename) and returns per-line
 // styled runes. The concatenation of all runes equals the input exactly.
 func Highlight(text, filename, styleName string) [][]StyledRune {

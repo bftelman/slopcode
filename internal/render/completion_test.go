@@ -31,6 +31,7 @@ func TestDrawCompletionListsItemsBelowAnchor(t *testing.T) {
 	p := Popup{Items: []completion.Item{{Label: "alpha"}, {Label: "beta"}}, Sel: 1}
 	p.Anchor.X, p.Anchor.Y = 2, 3
 	DrawCompletion(s, p)
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	// Each row is prefixed with a 4-column kind tag ("[X] " or 4 spaces for
 	// an untagged kind); labels start right after it.
@@ -56,6 +57,7 @@ func TestDrawCompletionShowsKindTag(t *testing.T) {
 	}, Sel: -1}
 	p.Anchor.X, p.Anchor.Y = 0, 0
 	DrawCompletion(s, p)
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	if got := cellText(s, 0, 1, kindTagWidth); got != "[F] " {
 		t.Fatalf("function tag = %q, want %q", got, "[F] ")
@@ -78,6 +80,7 @@ func TestDrawCompletionSelectedRowIsInverted(t *testing.T) {
 	p := Popup{Items: []completion.Item{{Label: "alpha"}, {Label: "beta"}}, Sel: 1}
 	p.Anchor.X, p.Anchor.Y = 0, 0
 	DrawCompletion(s, p)
+	s.Show() // compose-then-flush: Draw* no longer flushes
 
 	cells, _, _ := s.GetContents()
 	w, _ := s.Size()

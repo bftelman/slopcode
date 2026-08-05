@@ -16,6 +16,14 @@ bar), but it is not modal: you type into the buffer straight away, no insert or 
   pair, typing the closing character steps over it, and deleting an empty pair removes both
   characters.
 - A file browser sidebar (Ctrl+B) for moving between files without leaving the editor.
+- Incremental search and replace (Ctrl+F). Matches highlight as you type, with the active
+  one picked out; step through them, replace one at a time, or replace all at once as a
+  single undo step. Matching is smart-case: an all-lowercase query is case-insensitive,
+  and any capital letter makes it case-sensitive.
+- Telescope-style fuzzy pickers: Ctrl+P finds files anywhere in the project by path, and
+  Ctrl+G jumps to a line in the open file. Both rank as you type and highlight the
+  characters your query matched. File listing uses `rg` or `fd` when either is installed
+  (so `.gitignore` is respected) and falls back to a plain directory walk otherwise.
 - Automatic code completion for Go files, backed by `gopls` over LSP. A popup appears as
   you type an identifier or after `.`; each item shows a kind tag (`[F]` function, `[V]`
   variable, `[C]` constant, `[P]` field, `[K]` keyword, `[T]` type, `[M]` module) colored
@@ -33,6 +41,10 @@ bar), but it is not modal: you type into the buffer straight away, no insert or 
 - Optional: [`gopls`](https://pkg.go.dev/golang.org/x/tools/gopls) on `$PATH`, `$GOBIN`, or
   `$(go env GOPATH)/bin`, for Go code completion. Its absence is not an error — completion
   is simply disabled.
+- Optional: [`rg`](https://github.com/BurntSushi/ripgrep) or
+  [`fd`](https://github.com/sharkdp/fd) on `$PATH`, so the file picker respects
+  `.gitignore`. Without either, it falls back to walking the directory tree and skipping
+  the usual suspects (`.git`, `node_modules`, `vendor`, and friends).
 
 ## Build and run
 
@@ -72,8 +84,32 @@ Editing:
 | Ctrl+S | Save |
 | Ctrl+Z | Undo |
 | Ctrl+Y | Redo |
+| Ctrl+F | Find and replace |
+| Ctrl+P | Fuzzy-find a file in the project |
+| Ctrl+G | Fuzzy-find a line in the current file |
 | Ctrl+B | Open the file browser |
 | Ctrl+Q | Quit (blocked while there are unsaved changes) |
+
+Find and replace (Ctrl+F):
+
+| Key | Action |
+| --- | --- |
+| Any text | Edit the focused field; matches update as you type |
+| Tab | Show the replace field, then toggle focus between the two |
+| Ctrl+N / Ctrl+P | Go to the next or previous match |
+| Ctrl+R | Replace the current match and move to the next |
+| Ctrl+A | Replace every match (one undo step) |
+| Enter | Close, leaving the cursor on the current match |
+| Esc | Close, returning the cursor to where it started |
+
+Fuzzy picker (Ctrl+P or Ctrl+G):
+
+| Key | Action |
+| --- | --- |
+| Any text | Filter the list |
+| Up / Down, or Ctrl+P / Ctrl+N | Move the selection |
+| Enter | Open the file, or jump to the line |
+| Esc | Close the picker |
 
 Completion popup (while open):
 
@@ -109,11 +145,13 @@ The code is split into small packages, each with one job:
 | `internal/fileio` | Reading and writing files. |
 | `internal/autopair` | Bracket and quote completion on top of the buffer. |
 | `internal/filebrowser` | Directory listing and navigation. |
+| `internal/textsearch` | Literal substring search and match stepping over lines. |
+| `internal/picker` | Fuzzy-picker candidate sources and the async ranking engine. |
 | `internal/highlight` | Turns source text into colored runes with chroma. |
 | `internal/lsp` | Minimal JSON-RPC client for LSP servers (subprocess, doc sync, completion). |
 | `internal/completion` | UI-free completion engine: debounce, provider dispatch, gopls provider. |
-| `internal/render` | Draws the status bar, gutter, text, sidebar, welcome screen, and completion popup. |
-| `internal/editor` | The event loop that ties input, buffer, completion, and rendering together. |
+| `internal/render` | Draws the status bar, gutter, text, sidebar, welcome screen, completion popup, find bar, and picker overlay. |
+| `internal/editor` | The event loop that ties input, buffer, completion, search, pickers, and rendering together. |
 | `main.go` | Argument parsing and startup. |
 
 ## Tests
@@ -122,9 +160,11 @@ The code is split into small packages, each with one job:
 go test ./...
 ```
 
-The `buffer`, `fileio`, `autopair`, `filebrowser`, `lsp`, `completion`, and `highlight`
-packages have unit tests. The editor and render packages are checked through a simulated
-screen that drives the real event loop and inspects the resulting cells.
+The `buffer`, `fileio`, `autopair`, `filebrowser`, `textsearch`, `picker`, `lsp`,
+`completion`, and `highlight` packages have unit tests. The editor and render packages are
+checked through a simulated screen that drives the real event loop and inspects the
+resulting cells. The picker's tests do not require `rg` or `fd`: file listing is injected,
+so the parsing and the directory-walk fallback are exercised directly.
 
 A real-`gopls` integration test is excluded from the default run (`//go:build lsp_integration`)
 since it needs `gopls` installed. Run it explicitly with:

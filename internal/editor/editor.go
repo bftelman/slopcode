@@ -12,6 +12,8 @@ import (
 	"github.com/bftelman/slopcode/internal/completion"
 	"github.com/bftelman/slopcode/internal/filebrowser"
 	"github.com/bftelman/slopcode/internal/fileio"
+	"github.com/bftelman/slopcode/internal/highlight"
+	"github.com/bftelman/slopcode/internal/picker"
 	"github.com/bftelman/slopcode/internal/render"
 )
 
@@ -26,6 +28,16 @@ type Editor struct {
 	browser     *filebrowser.Browser // non-nil while browsing
 	pendingOpen string               // unsaved-changes guard latch
 	splashShown bool                 // true when the last frame was the splash screen
+
+	// hl memoizes syntax highlighting across repaints. Without it every repaint -
+	// including cursor moves and picker navigation - re-tokenizes the whole
+	// document through chroma, which dominates frame cost on larger files.
+	hl highlight.Cache
+
+	find    *findState // non-nil while the find/replace bar is open
+	pick    *pickState // non-nil while the fuzzy picker overlay is open
+	pk      *picker.Engine
+	pickGen int // editor-owned generation, like docVersion, for dropping stale results
 
 	eng        *completion.Engine
 	docVersion int
@@ -42,11 +54,17 @@ func New(s tcell.Screen, b *buffer.Buffer, path string) *Editor {
 
 // NewWithEngine builds an Editor with an injected completion engine (tests).
 func NewWithEngine(s tcell.Screen, b *buffer.Buffer, path string, eng *completion.Engine) *Editor {
-	e := &Editor{s: s, b: b, path: path, baseline: cloneLines(b.Lines()), eng: eng}
+	e := &Editor{
+		s: s, b: b, path: path,
+		baseline: cloneLines(b.Lines()),
+		eng:      eng,
+		pk:       picker.NewEngine(),
+	}
 	if path != "" {
 		e.eng.Open(e.document())
 	}
 	go e.bridge()
+	go e.pickBridge()
 	return e
 }
 
@@ -87,13 +105,25 @@ func (e *Editor) Run() {
 			}
 		case *completionEvent:
 			e.applyResult(ev.res)
+		case *pickerEvent:
+			e.applyPickResult(ev.res)
 		}
 		e.draw()
 	}
 }
 
 // handleKey applies one key event. It returns true when the editor should quit.
+//
+// Precedence: the find bar and the browser are modal surfaces that consume keys
+// wholesale; the completion popup only intercepts the few keys it reinterprets
+// and otherwise falls through to normal editing.
 func (e *Editor) handleKey(ev *tcell.EventKey) bool {
+	if e.pick != nil {
+		return e.handlePickKey(ev)
+	}
+	if e.find != nil {
+		return e.handleFindKey(ev)
+	}
 	if e.browser != nil {
 		return e.handleBrowseKey(ev)
 	}
@@ -106,6 +136,12 @@ func (e *Editor) handleKey(ev *tcell.EventKey) bool {
 	switch ev.Key() {
 	case tcell.KeyCtrlQ:
 		return e.tryQuit()
+	case tcell.KeyCtrlF:
+		e.openFind()
+	case tcell.KeyCtrlP:
+		e.openFilePicker()
+	case tcell.KeyCtrlG:
+		e.openLinePicker()
 	case tcell.KeyCtrlB:
 		e.openBrowser()
 	case tcell.KeyCtrlS:
@@ -169,6 +205,7 @@ func (e *Editor) tryQuit() bool {
 		return false
 	}
 	e.eng.Close()
+	e.pk.Close()
 	return true
 }
 
@@ -244,14 +281,27 @@ func (e *Editor) browseEnter() {
 		e.notice = "unsaved changes — Ctrl+S, or Enter again to discard"
 		return
 	}
-	lines, err := fileio.Load(path)
-	if err != nil {
+	if err := e.openPath(path); err != nil {
 		e.notice = "OPEN ERROR: " + err.Error()
 		return
 	}
-	// Tell the completion engine the old document is gone before swapping
-	// e.path out from under it — otherwise it keeps sending didChange for a
-	// URI it never opened, and the new file never gets a didOpen at all.
+	e.browser = nil
+	e.pendingOpen = ""
+	e.notice = path + " opened"
+}
+
+// openPath loads path into the buffer and resets the view state for it.
+//
+// The ordering here matters and is shared by every caller (the browser and the
+// picker) rather than duplicated: the completion engine must be told the old
+// document is gone *before* e.path changes under it, or it keeps sending
+// didChange for a URI it never opened and the new file never gets a didOpen at
+// all. Getting this wrong broke real gopls symbol resolution once already.
+func (e *Editor) openPath(path string) error {
+	lines, err := fileio.Load(path)
+	if err != nil {
+		return err
+	}
 	e.dismissPopup()
 	if oldURI := e.uri(); oldURI != "" {
 		e.eng.CloseDoc(oldURI)
@@ -261,23 +311,29 @@ func (e *Editor) browseEnter() {
 	e.scroll = 0
 	e.baseline = cloneLines(e.b.Lines())
 	e.docVersion++
-	e.browser = nil
-	e.pendingOpen = ""
-	e.notice = path + " opened"
 	if e.path != "" {
 		e.eng.Open(e.document())
 	}
+	return nil
 }
 
 // draw adjusts the scroll offset to keep the cursor visible, then renders.
 func (e *Editor) draw() {
-	if e.browser == nil && e.path == "" && !e.isModified() {
+	// The splash screen replaces the whole frame, so every surface that can be
+	// open over it has to suppress it — otherwise the early return here means
+	// the overlay is never drawn at all.
+	if e.browser == nil && e.pick == nil && e.find == nil && e.path == "" && !e.isModified() {
 		render.DrawSplash(e.s, e.displayName(), e.notice)
+		render.Flush(e.s)
 		e.splashShown = true
 		return
 	}
 	_, height := e.s.Size()
-	textRows := height - 1
+	bottomRows := 0
+	if e.find != nil {
+		bottomRows = render.FindBarRows
+	}
+	textRows := height - 1 - bottomRows
 	if textRows < 1 {
 		textRows = 1
 	}
@@ -287,16 +343,45 @@ func (e *Editor) draw() {
 	} else if row >= e.scroll+textRows {
 		e.scroll = row - textRows + 1
 	}
-	modified := e.isModified()
+	f := render.Frame{
+		Buf:        e.b,
+		Filename:   e.displayName(),
+		Notice:     e.notice,
+		Modified:   e.isModified(),
+		Scroll:     e.scroll,
+		ShowCursor: true,
+		BottomRows: bottomRows,
+		Hl:         &e.hl,
+	}
+	if e.find != nil {
+		// The find bar draws its own cursor in the focused field, and there is
+		// only one terminal cursor to go around.
+		f.ShowCursor = false
+		f.Matches, f.Current = e.find.matches, e.find.cur
+	}
+	if e.pick != nil {
+		f.ShowCursor = false // the picker's query line owns the cursor
+	}
 	if e.browser != nil {
-		render.Draw(e.s, e.b, e.displayName(), e.notice, modified, e.scroll, render.SidebarWidth, false)
+		f.OriginX, f.ShowCursor = render.SidebarWidth, false
+		render.Draw(e.s, f)
 		render.DrawSidebar(e.s, e.browser)
 	} else {
-		render.Draw(e.s, e.b, e.displayName(), e.notice, modified, e.scroll, 0, true)
+		render.Draw(e.s, f)
+	}
+	if e.find != nil {
+		render.DrawFindBar(e.s, e.find.findBar())
 	}
 	if e.popup != nil {
 		render.DrawCompletion(e.s, *e.popup)
 	}
+	// The picker is drawn last: it is a modal overlay and must sit on top.
+	if e.pick != nil {
+		render.DrawPicker(e.s, e.pick.picker())
+	}
+	// One flush for the whole composed frame. Flushing per-surface would put an
+	// overlay-less intermediate frame on screen every repaint — see render.Flush.
+	render.Flush(e.s)
 	// Leaving the splash: the OSC 8 link left an open hyperlink region. Force a
 	// full repaint so tcell re-emits every cell, closing the link and clearing
 	// any ghost underlines the terminal painted while it was open.
