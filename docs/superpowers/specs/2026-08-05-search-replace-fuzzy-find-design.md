@@ -208,6 +208,18 @@ func PrevFrom(ms []Match, row, col int) int
 jobs would either skip a match the cursor already sits on when opening the bar,
 or make `Ctrl+N` stick in place.
 
+```go
+// NearestForward returns the index of the first match at or after (row, col),
+// or -1 when there is none. Unlike NearestFrom it does NOT wrap.
+func NearestForward(ms []Match, row, col int) int
+```
+
+**Added during implementation, after a test caught a real bug.** A replace sweep
+must advance with `NearestForward`, not `NearestFrom`. Wrapping there means a
+replacement that contains the query (`foo` -> `foofoo`) wraps the selection back
+onto the text just inserted, so holding `Ctrl+R` grows the line without ever
+terminating. Wrapping is right for `Ctrl+N` navigation and wrong for replacing.
+
 ### Smart case, and the byte-length trap
 
 An all-lowercase query matches case-insensitively; any uppercase rune in the
@@ -300,8 +312,8 @@ type Result struct {
 
 // Engine ranks candidates on its own goroutine: debounced, cancellable,
 // generation-tagged. Every method returns immediately.
-func NewEngine() *Engine
-func (e *Engine) Open(src Source)       // loads candidates, then ranks ""
+func NewEngine(opts ...Option) *Engine
+func (e *Engine) Open(gen int, src Source) // loads candidates; results echo gen
 func (e *Engine) Query(q string)        // debounced re-rank; supersedes pending
 func (e *Engine) Results() <-chan Result
 func (e *Engine) Close() error
@@ -310,6 +322,22 @@ func (e *Engine) Close() error
 `MaxRows` is a package constant (200) capping how many rows cross the channel
 and reach the renderer — the overlay only ever shows a screenful. `Total` still
 reports the true match count, so the `[n/m]` counter stays accurate.
+
+**Changed during implementation:** `Open` takes the generation from the caller
+rather than the engine keeping its own counter. The editor owns `pickGen`,
+exactly as it owns `docVersion` for completion, because only the editor knows
+which picker is on screen when a late result arrives. With an engine-owned
+counter the editor could not distinguish a result for the picker it just replaced
+from one for the current picker — it would not learn the new generation's number
+until that generation's first result had already been applied.
+
+**Tie ordering is not stable across narrowing.** `fuzzy` sorts with
+`Less(i,j) = Score >= Score` under `sort.Stable`, so equally-scored candidates
+keep their input order — and narrowing feeds candidates in the previous ranking's
+order rather than natural order. The match set and the score sequence are
+identical either way; only the arrangement within a run of equal scores can
+differ. That is the same tie instability fzf and telescope have, and it is what
+the narrowing property test asserts (set + score sequence, not exact order).
 
 ### File listing, with fallbacks
 
@@ -473,6 +501,15 @@ so the picker reuses it rather than re-implementing it.
 
 Setting the cursor is sufficient: `draw()` already adjusts `scroll` to keep the
 cursor visible. No centering logic (YAGNI).
+
+### The splash-screen short circuit
+
+`draw()` returns early and paints the welcome screen when the buffer is unnamed
+and unmodified. Every surface that can be open over it must suppress that branch,
+or the early return means the overlay is never painted at all. The browser was
+already excluded; the find bar and the picker are now too. A test opens a picker
+on a fresh `[No Name]` buffer and asserts the overlay reaches the screen — this
+was a real bug the test caught.
 
 ### Unsaved and [No Name] buffers
 
